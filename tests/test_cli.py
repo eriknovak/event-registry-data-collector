@@ -47,3 +47,46 @@ def test_get_conflicting_flags():
 def test_get_conflicting_flags_none_set():
     args = argparse.Namespace()
     assert get_conflicting_flags(args) == []
+
+
+def test_articles_and_events_parsers_accept_query_file():
+    from collector.cli import create_argparser
+
+    parser = create_argparser()
+    args = parser.parse_args(["articles", "--query_file=queries/eu.json"])
+    assert args.query_file == "queries/eu.json"
+    args = parser.parse_args(["events", "--query_file=queries/eu.json"])
+    assert args.query_file == "queries/eu.json"
+
+
+def test_run_suggest_routes_by_type(capsys):
+    from unittest import mock
+
+    from collector.cli import run_suggest
+
+    er = mock.Mock()
+    er.suggest_categories.return_value = [{"uri": "dmoz/Sports"}]
+    args = argparse.Namespace(
+        suggest_type="categories", prefix="sport", types=None, lang="eng", count=20, output_format="table"
+    )
+    run_suggest(er, args)
+    er.suggest_categories.assert_called_once_with("sport", count=20)
+    er.suggest_concepts.assert_not_called()
+    er.suggest_sources.assert_not_called()
+    assert "dmoz/Sports" in capsys.readouterr().out
+
+
+def test_run_suggest_json_output(capsys):
+    from unittest import mock
+
+    from collector.cli import run_suggest
+
+    er = mock.Mock()
+    er.suggest_sources.return_value = [{"uri": "delo.si", "title": "Delo"}]
+    args = argparse.Namespace(
+        suggest_type="sources", prefix="delo", types=None, lang="eng", count=20, output_format="json"
+    )
+    run_suggest(er, args)
+    import json as json_lib
+
+    assert json_lib.loads(capsys.readouterr().out) == [{"uri": "delo.si", "title": "Delo"}]

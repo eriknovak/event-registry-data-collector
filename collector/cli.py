@@ -14,6 +14,7 @@ from typing import Any, Dict, List
 from dotenv import load_dotenv
 
 from collector.client import EventRegistryCollector
+from collector.query import load_query_file
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,9 @@ def format_label(item: Dict[str, Any]) -> str:
         str: The label in English (or the first available language), the
             source title, or an empty string.
     """
-    label = item.get("label") or item.get("title") or ""
+    label = item.get("label")
+    if label is None:
+        label = item.get("title", "")
     if isinstance(label, dict):
         return label.get("eng") or next(iter(label.values()), "")
     return str(label)
@@ -114,6 +117,13 @@ def create_argparser() -> argparse.ArgumentParser:
         default=-1,
         help="The maximum number of repeated requests",
     )
+    subparser.add_argument(
+        "--query_file",
+        type=str,
+        default=None,
+        help="The path to a JSON file with a complex query in the ER advanced query language. "
+        "Cannot be combined with the keywords/concepts/categories/sources/languages/date flags",
+    )
 
     # query related attributes
     subparser.add_argument(
@@ -185,6 +195,13 @@ def create_argparser() -> argparse.ArgumentParser:
         type=int,
         default=-1,
         help="The maximum number of repeated requests",
+    )
+    subparser.add_argument(
+        "--query_file",
+        type=str,
+        default=None,
+        help="The path to a JSON file with a complex query in the ER advanced query language. "
+        "Cannot be combined with the keywords/concepts/categories/sources/languages/date flags",
     )
 
     # query related attributes
@@ -550,6 +567,23 @@ def main() -> None:
             # output additional debug information
             logging.getLogger().setLevel(logging.DEBUG)
 
+        # load the complex query file if provided
+        query = None
+        query_file = getattr(args, "query_file", None)
+        if query_file:
+            conflicting = get_conflicting_flags(args)
+            if conflicting:
+                logger.error(
+                    "--query_file cannot be combined with: %s",
+                    ", ".join("--" + flag for flag in conflicting),
+                )
+                sys.exit(1)
+            try:
+                query = load_query_file(query_file)
+            except ValueError as error:
+                logger.error(str(error))
+                sys.exit(1)
+
         # validate the API key before initializing the collector
         api_key = os.getenv("API_KEY")
         if not api_key:
@@ -579,6 +613,7 @@ def main() -> None:
                 save_to_file=save_to_file,
                 save_format=save_format,
                 verbose=verbose,
+                query=query,
             )
 
         elif args.action == "events":
@@ -597,6 +632,7 @@ def main() -> None:
                 save_to_file=save_to_file,
                 save_format=save_format,
                 verbose=verbose,
+                query=query,
             )
 
         elif args.action == "event":
