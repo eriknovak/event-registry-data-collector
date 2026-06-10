@@ -44,6 +44,12 @@ def test_inject_date_start_does_not_mutate_input():
     assert query == {"$query": {"keyword": "a"}}
 
 
+def test_inject_date_start_rejects_bare_query():
+    """A query missing the $query key raises a ValueError."""
+    with pytest.raises(ValueError, match="full"):
+        inject_date_start({"keyword": "a"}, "2026-01-01")
+
+
 def test_load_query_file_valid(tmp_path):
     """A valid query file is loaded and wrapped."""
     path = tmp_path / "query.json"
@@ -72,3 +78,11 @@ def test_load_query_file_not_an_object(tmp_path):
     path.write_text("[1, 2]")
     with pytest.raises(ValueError, match="JSON object"):
         load_query_file(str(path))
+
+
+def test_load_query_file_full_form_unchanged(tmp_path):
+    """A file already in the full $query form is returned unchanged."""
+    query = {"$query": {"conceptUri": "x"}, "$filter": {"dataType": "news"}}
+    path = tmp_path / "full.json"
+    path.write_text(json.dumps(query))
+    assert load_query_file(str(path)) == query

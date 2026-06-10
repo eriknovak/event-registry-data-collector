@@ -39,7 +39,12 @@ def inject_date_start(query: Dict[str, Any], date_start: str) -> Dict[str, Any]:
 
     Returns:
         Dict[str, Any]: A new query dict with the injected date condition.
+
+    Raises:
+        ValueError: If the query is not in the full ``$query`` form.
     """
+    if "$query" not in query:
+        raise ValueError("inject_date_start: query must be in the full {'$query': ...} form")
     return {
         **query,
         "$query": {"$and": [query["$query"], {"dateStart": date_start}]},
@@ -60,12 +65,12 @@ def load_query_file(path: str) -> Dict[str, Any]:
             not contain a JSON object.
     """
     if not os.path.isfile(path):
-        raise ValueError("Query file not found: {}".format(path))
+        raise ValueError(f"Query file not found: {path}")
     with open(path) as in_file:
         try:
             query = json.load(in_file)
         except json.JSONDecodeError as error:
-            raise ValueError("Query file is not valid JSON: {} ({})".format(path, error))
+            raise ValueError(f"Query file is not valid JSON: {path} ({error})") from error
     if not isinstance(query, dict):
-        raise ValueError("Query file must contain a JSON object: {}".format(path))
+        raise ValueError(f"Query file must contain a JSON object: {path}")
     return wrap_query(query)
