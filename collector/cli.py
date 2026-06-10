@@ -5,15 +5,89 @@ Event Registry query.
 """
 
 import argparse
+import json
 import logging
 import os
 import sys
+from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
 from collector.client import EventRegistryCollector
 
 logger = logging.getLogger(__name__)
+
+# the flags that define the query and conflict with --query_file
+QUERY_FLAGS = ("keywords", "concepts", "categories", "sources", "languages", "date_start", "date_end")
+
+
+def format_label(item: Dict[str, Any]) -> str:
+    """Extracts a display label from a suggestion item.
+
+    Args:
+        item (Dict[str, Any]): A suggestion returned by the ER suggest API.
+
+    Returns:
+        str: The label in English (or the first available language), the
+            source title, or an empty string.
+    """
+    label = item.get("label") or item.get("title") or ""
+    if isinstance(label, dict):
+        return label.get("eng") or next(iter(label.values()), "")
+    return str(label)
+
+
+def render_suggestions(items: List[Dict[str, Any]]) -> str:
+    """Renders the suggestion items as an aligned text table.
+
+    Args:
+        items (List[Dict[str, Any]]): The suggestions returned by the ER
+            suggest API.
+
+    Returns:
+        str: The table with index, type, label and URI columns, or a
+            message if there are no suggestions.
+    """
+    if not items:
+        return "No suggestions found. Try a different prefix or, for concepts, the --types option."
+    header = ("#", "TYPE", "LABEL", "URI")
+    rows = [(str(i), item.get("type", "-"), format_label(item), item.get("uri", "")) for i, item in enumerate(items, 1)]
+    widths = [max(len(row[col]) for row in [header] + rows) for col in range(4)]
+    lines = ["  ".join(value.ljust(width) for value, width in zip(row, widths)) for row in [header] + rows]
+    return "\n".join(lines)
+
+
+def get_conflicting_flags(args: argparse.Namespace) -> List[str]:
+    """Returns the query flags that were set and conflict with --query_file.
+
+    Args:
+        args (argparse.Namespace): The parsed command line arguments.
+
+    Returns:
+        List[str]: The names of the conflicting flags.
+    """
+    return [flag for flag in QUERY_FLAGS if getattr(args, flag, None)]
+
+
+def run_suggest(er: EventRegistryCollector, args: argparse.Namespace) -> None:
+    """Executes the suggest action and prints the results.
+
+    Args:
+        er (EventRegistryCollector): The initialized collector.
+        args (argparse.Namespace): The parsed command line arguments.
+    """
+    types = [t.strip() for t in args.types.split(",")] if args.types else None
+    if args.suggest_type == "concepts":
+        items = er.suggest_concepts(args.prefix, types=types, lang=args.lang, count=args.count)
+    elif args.suggest_type == "categories":
+        items = er.suggest_categories(args.prefix, count=args.count)
+    else:
+        items = er.suggest_sources(args.prefix, count=args.count)
+
+    if args.output_format == "json":
+        print(json.dumps(items, ensure_ascii=False, indent=2))
+    else:
+        print(render_suggestions(items))
 
 
 def create_argparser() -> argparse.ArgumentParser:
@@ -386,6 +460,35 @@ def create_argparser() -> argparse.ArgumentParser:
         help="If true, output the query parameters retrieved by ER",
     )
 
+    ###################################
+    # Suggest Query
+    ###################################
+
+    subparser = subparsers.add_parser("suggest", help="Suggests concept/category/source URIs for a search prefix")
+    subparser.set_defaults(action="suggest")
+
+    subparser.add_argument(
+        "suggest_type",
+        choices=["concepts", "categories", "sources"],
+        help="The type of suggestions to retrieve",
+    )
+    subparser.add_argument("prefix", type=str, help="The text the suggestions should match")
+    subparser.add_argument(
+        "--types",
+        type=str,
+        default=None,
+        help="The comma separated concept types (concepts only). Options: person, loc, org, wiki, entities, concepts",
+    )
+    subparser.add_argument("--lang", type=str, default="eng", help="The language of the prefix (concepts only)")
+    subparser.add_argument("--count", type=int, default=20, help="The number of suggestions to return")
+    subparser.add_argument(
+        "--format",
+        dest="output_format",
+        choices=["table", "json"],
+        default="table",
+        help="The output format of the suggestions",
+    )
+
     return argparser
 
 
@@ -409,7 +512,7 @@ def main() -> None:
         args = argparser.parse_args()
 
         # event registry API values
-        max_repeat_request = args.max_repeat_request
+        max_repeat_request = getattr(args, "max_repeat_request", -1)
 
         # query related attributes
         keywords = (
@@ -455,6 +558,10 @@ def main() -> None:
 
         # initialize and execute query
         er = EventRegistryCollector(api_key=api_key, max_repeat_request=max_repeat_request)
+
+        if args.action == "suggest":
+            run_suggest(er, args)
+            return
 
         if args.action == "articles":
             # execute the articles query
