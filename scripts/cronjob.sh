@@ -23,15 +23,15 @@ echo "$CURRENT_WEEK"
 
 # get the events about the Slovenian EU presidency
 run_collector \
-    --max_repeat_request=5 \
     events \
+    --max_repeat_request=5 \
     --concepts="Presidency of the Council of the European Union,Slovenia" \
     --date_start="$CURRENT_WEEK" \
     --save_to_file="./data/eu2021sl/$CURRENT_WEEK.jsonl"
 
 # get the articles of the events acquired with the above command
 run_collector \
-    --max_repeat_request=5 \
     event_articles_from_file \
+    --max_repeat_request=5 \
     --event_ids_file="./data/eu2021sl/$CURRENT_WEEK.jsonl" \
     --save_to_file="./data/eu2021sl/$CURRENT_WEEK"

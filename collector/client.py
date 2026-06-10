@@ -12,6 +12,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 
 import eventregistry as ER
 
+from collector.query import inject_date_start
 from collector.storage import save_result_in_file
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,63 @@ def print_query_params(params: Dict[str, Any]) -> None:
     """
 
     logger.info(message)
+
+
+def is_concept_uri(value: str) -> bool:
+    """Checks whether the value is already a concept URI.
+
+    Args:
+        value (str): The concept name or URI.
+
+    Returns:
+        bool: True if the value is a URI (starts with http:// or https://).
+    """
+    return value.startswith(("http://", "https://"))
+
+
+def is_category_uri(value: str) -> bool:
+    """Checks whether the value is already a category URI.
+
+    Args:
+        value (str): The category name or URI.
+
+    Returns:
+        bool: True if the value is a URI (starts with dmoz/ or news/).
+    """
+    return value.startswith(("dmoz/", "news/"))
+
+
+def is_source_uri(value: str) -> bool:
+    """Checks whether the value is already a source URI.
+
+    Args:
+        value (str): The source name or URI.
+
+    Returns:
+        bool: True if the value looks like a domain (contains a dot and is not an HTTP URL).
+    """
+    return "." in value and not value.startswith(("http://", "https://"))
+
+
+def get_last_date(file_path: Optional[str], date_field: str) -> Optional[str]:
+    """Reads the date of the last stored item in a JSONL file.
+
+    Args:
+        file_path (Optional[str]): The path of the JSONL file.
+        date_field (str): The attribute holding the item date (e.g. 'date'
+            for articles, 'eventDate' for events).
+
+    Returns:
+        Optional[str]: The date of the last item, or None if the file does
+            not exist or is empty.
+    """
+    if not (file_path and os.path.isfile(file_path)):
+        return None
+    with open(file_path) as in_file:
+        lines = [line for line in in_file.readlines() if line.strip()]
+    if len(lines) == 0:
+        return None
+    return json.loads(lines[-1]).get(date_field)
 
 
 @dataclass(frozen=True)
@@ -115,41 +173,125 @@ class EventRegistryCollector:
     def get_concepts(self, concepts: List[str]) -> List[URI]:
         """Get the list of event registry concepts.
 
+        Values that are already URIs are passed through unchanged; plain
+        names are auto-resolved with a warning.
+
         Args:
-            concepts (List[str]): The list of concepts for
-                retrieving the concept URIs.
+            concepts (List[str]): The list of concept names or URIs.
 
         Returns:
-            List[URI]: A list of URI objects with the given
-                concept URIs.
+            List[URI]: A list of URI objects with the given concept URIs.
         """
-        return [URI(k, self._er.getConceptUri(k)) for k in concepts]
+        uris = []
+        for k in concepts:
+            if is_concept_uri(k):
+                uris.append(URI(k, k))
+                continue
+            uri = self._er.getConceptUri(k)
+            logger.warning(
+                "resolved %r -> %s (use 'collect suggest concepts' to pick explicitly)", k, uri
+            )
+            uris.append(URI(k, uri))
+        return uris
 
     def get_categories(self, categories: List[str]) -> List[URI]:
         """Get the list of event registry categories.
 
+        Values that are already URIs are passed through unchanged; plain
+        names are auto-resolved with a warning.
+
         Args:
-            categories (List[str]): The list of categories for
-                retrieving the categories URIs.
+            categories (List[str]): The list of category names or URIs.
 
         Returns:
-            List[URI]: A list of URI objects with the given
-                categories URIs.
+            List[URI]: A list of URI objects with the given category URIs.
         """
-        return [URI(k, self._er.getCategoryUri(k)) for k in categories]
+        uris = []
+        for k in categories:
+            if is_category_uri(k):
+                uris.append(URI(k, k))
+                continue
+            uri = self._er.getCategoryUri(k)
+            logger.warning(
+                "resolved %r -> %s (use 'collect suggest categories' to pick explicitly)", k, uri
+            )
+            uris.append(URI(k, uri))
+        return uris
 
     def get_sources(self, sources: List[str]) -> List[URI]:
         """Get the list of source uris.
 
+        Values that look like domains are passed through unchanged; plain
+        names are auto-resolved with a warning.
+
         Args:
-            sources (List[str]): The list of sources for
-                retrieving the source URIs.
+            sources (List[str]): The list of source names or URIs.
 
         Returns:
-            List[URI]: A list of URI objects with the given
-                source URIs.
+            List[URI]: A list of URI objects with the given source URIs.
         """
-        return [URI(k, self._er.getSourceUri(k)) for k in sources]
+        uris = []
+        for k in sources:
+            if is_source_uri(k):
+                uris.append(URI(k, k))
+                continue
+            uri = self._er.getSourceUri(k)
+            logger.warning(
+                "resolved %r -> %s (use 'collect suggest sources' to pick explicitly)", k, uri
+            )
+            uris.append(URI(k, uri))
+        return uris
+
+    def suggest_concepts(
+        self,
+        prefix: str,
+        types: Optional[List[str]] = None,
+        lang: str = "eng",
+        count: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Gets the ranked concept suggestions for the given prefix.
+
+        Args:
+            prefix (str): The text the concept should match.
+            types (Optional[List[str]]): The concept types to return. Valid
+                values: person, loc, org, wiki, entities (person + loc + org),
+                concepts (entities + wiki). If None, the 'concepts' source is
+                used, which covers all types (Default: None).
+            lang (str): The language of the prefix (Default: 'eng').
+            count (int): The number of suggestions to return (Default: 20).
+
+        Returns:
+            List[Dict[str, Any]]: The ranked concept candidates with their
+                uri, type and label.
+        """
+        return self._er.suggestConcepts(
+            prefix, sources=types or ["concepts"], lang=lang, count=count
+        )
+
+    def suggest_categories(self, prefix: str, count: int = 20) -> List[Dict[str, Any]]:
+        """Gets the ranked category suggestions for the given prefix.
+
+        Args:
+            prefix (str): The text the category name should match.
+            count (int): The number of suggestions to return (Default: 20).
+
+        Returns:
+            List[Dict[str, Any]]: The ranked category candidates with their uri.
+        """
+        return self._er.suggestCategories(prefix, count=count)
+
+    def suggest_sources(self, prefix: str, count: int = 20) -> List[Dict[str, Any]]:
+        """Gets the ranked news source suggestions for the given prefix.
+
+        Args:
+            prefix (str): The text the source name or uri should match.
+            count (int): The number of suggestions to return (Default: 20).
+
+        Returns:
+            List[Dict[str, Any]]: The ranked source candidates with their
+                uri and title.
+        """
+        return self._er.suggestNewsSources(prefix, count=count)
 
     def get_articles(
         self,
@@ -166,6 +308,7 @@ class EventRegistryCollector:
         save_to_file: Optional[str] = None,
         save_format: Optional[str] = None,
         verbose: bool = False,
+        query: Optional[Dict[str, Any]] = None,
     ) -> Iterator[Any]:
         """Get the event registry articles.
 
@@ -202,50 +345,65 @@ class EventRegistryCollector:
                         be used when storing query results into the same file.
                     None - The articles are stored line-by-line in the file.
             verbose (bool): If true, output the query parameters retrieved by ER (Default: False).
+            query (Optional[Dict[str, Any]]): A complex query in Event
+                Registry's advanced query language (the full
+                {"$query": ...} form). Cannot be combined with the flat
+                query parameters (keywords, concepts, categories, sources,
+                languages, date_start, date_end) (Default: None).
 
         Returns:
             Iterator[Any]: The iterator which goes through all retrieved articles.
         """
-        # setup the event registry parameters
-        er_keywords = ER.QueryItems.AND(keywords) if keywords else None
-        er_concepts = ER.QueryItems.AND([c.uri for c in self.get_concepts(concepts)]) if concepts else None
-        er_categories = ER.QueryItems.AND([c.uri for c in self.get_categories(categories)]) if categories else None
-        er_sources = ER.QueryItems.OR([c.uri for c in self.get_sources(sources)]) if sources else None
-        er_lang = ER.QueryItems.OR(languages) if languages else None
+        if query is not None:
+            flat_params = [keywords, concepts, categories, sources, languages, date_start, date_end]
+            if any(p is not None for p in flat_params):
+                raise ValueError("get_articles: 'query' cannot be combined with the flat query parameters")
+            if "$query" not in query:
+                raise ValueError('get_articles: \'query\' must be in the full {"$query": ...} form')
 
-        # when saving to file check the last date and use it as start date
-        if save_to_file and os.path.isfile(save_to_file):
-            with open(save_to_file) as in_file:
-                # get all lines
-                lines = in_file.readlines()
-                if len(lines) > 0:
-                    last_article = json.loads(lines[-1])
-                    # check if last event in right location
-                    date_start = last_article["date"]
+            last_date = get_last_date(save_to_file, "date")
+            if last_date:
+                query = inject_date_start(query, last_date)
+                logger.info("Resuming collection from %s (last date in %s)", last_date, save_to_file)
 
-        if verbose:
-            print_query_params(
-                {
-                    "keywords": er_keywords,
-                    "concepts": er_concepts,
-                    "categories": er_categories,
-                    "sources": er_sources,
-                    "date_start": date_start,
-                    "date_end": date_end,
-                    "languages": languages,
-                }
+            q = ER.QueryArticlesIter.initWithComplexQuery(query)
+        else:
+            # setup the event registry parameters
+            er_keywords = ER.QueryItems.AND(keywords) if keywords else None
+            er_concepts = ER.QueryItems.AND([c.uri for c in self.get_concepts(concepts)]) if concepts else None
+            er_categories = ER.QueryItems.AND([c.uri for c in self.get_categories(categories)]) if categories else None
+            er_sources = ER.QueryItems.OR([c.uri for c in self.get_sources(sources)]) if sources else None
+            er_lang = ER.QueryItems.OR(languages) if languages else None
+
+            # when saving to file check the last date and use it as start date
+            last_date = get_last_date(save_to_file, "date")
+            if last_date:
+                date_start = last_date
+                logger.info("Resuming collection from %s (last date in %s)", last_date, save_to_file)
+
+            if verbose:
+                print_query_params(
+                    {
+                        "keywords": er_keywords,
+                        "concepts": er_concepts,
+                        "categories": er_categories,
+                        "sources": er_sources,
+                        "date_start": date_start,
+                        "date_end": date_end,
+                        "languages": languages,
+                    }
+                )
+
+            # creates the query articles object
+            q = ER.QueryArticlesIter(
+                keywords=er_keywords,
+                conceptUri=er_concepts,
+                categoryUri=er_categories,
+                sourceUri=er_sources,
+                dateStart=date_start,
+                dateEnd=date_end,
+                lang=er_lang,
             )
-
-        # creates the query articles object
-        q = ER.QueryArticlesIter(
-            keywords=er_keywords,
-            conceptUri=er_concepts,
-            categoryUri=er_categories,
-            sourceUri=er_sources,
-            dateStart=date_start,
-            dateEnd=date_end,
-            lang=er_lang,
-        )
 
         # execute the query and return the iterator
         articles = q.execQuery(self._er, sortBy=sort_by, sortByAsc=sort_by_asc, maxItems=max_items)
@@ -271,6 +429,7 @@ class EventRegistryCollector:
         save_to_file: Optional[str] = None,
         save_format: Optional[str] = None,
         verbose: bool = False,
+        query: Optional[Dict[str, Any]] = None,
     ) -> Iterator[Any]:
         """Get the event registry events.
 
@@ -307,50 +466,65 @@ class EventRegistryCollector:
                         be used when storing query results into the same file.
                     None - The events are stored line-by-line in the file.
             verbose (bool): If true, output the query parameters retrieved by ER (Default: False).
+            query (Optional[Dict[str, Any]]): A complex query in Event
+                Registry's advanced query language (the full
+                {"$query": ...} form). Cannot be combined with the flat
+                query parameters (keywords, concepts, categories, sources,
+                languages, date_start, date_end) (Default: None).
 
         Returns:
             Iterator[Any]: The iterator which goes through all retrieved events.
         """
-        # setup the event registry parameters
-        er_keywords = ER.QueryItems.AND(keywords) if keywords else None
-        er_concepts = ER.QueryItems.AND([c.uri for c in self.get_concepts(concepts)]) if concepts else None
-        er_categories = ER.QueryItems.AND([c.uri for c in self.get_categories(categories)]) if categories else None
-        er_sources = ER.QueryItems.OR([c.uri for c in self.get_sources(sources)]) if sources else None
-        er_lang = ER.QueryItems.OR(languages) if languages else None
+        if query is not None:
+            flat_params = [keywords, concepts, categories, sources, languages, date_start, date_end]
+            if any(p is not None for p in flat_params):
+                raise ValueError("get_events: 'query' cannot be combined with the flat query parameters")
+            if "$query" not in query:
+                raise ValueError('get_events: \'query\' must be in the full {"$query": ...} form')
 
-        # when saving to file check the last date and use it as start date
-        if save_to_file and os.path.isfile(save_to_file):
-            with open(save_to_file) as in_file:
-                # get all lines
-                lines = in_file.readlines()
-                if len(lines) > 0:
-                    last_article = json.loads(lines[-1])
-                    # check if last event in right location
-                    date_start = last_article["eventDate"]
+            last_date = get_last_date(save_to_file, "eventDate")
+            if last_date:
+                query = inject_date_start(query, last_date)
+                logger.info("Resuming collection from %s (last date in %s)", last_date, save_to_file)
 
-        if verbose:
-            print_query_params(
-                {
-                    "keywords": er_keywords,
-                    "concepts": er_concepts,
-                    "categories": er_categories,
-                    "sources": er_sources,
-                    "date_start": date_start,
-                    "date_end": date_end,
-                    "languages": languages,
-                }
+            q = ER.QueryEventsIter.initWithComplexQuery(query)
+        else:
+            # setup the event registry parameters
+            er_keywords = ER.QueryItems.AND(keywords) if keywords else None
+            er_concepts = ER.QueryItems.AND([c.uri for c in self.get_concepts(concepts)]) if concepts else None
+            er_categories = ER.QueryItems.AND([c.uri for c in self.get_categories(categories)]) if categories else None
+            er_sources = ER.QueryItems.OR([c.uri for c in self.get_sources(sources)]) if sources else None
+            er_lang = ER.QueryItems.OR(languages) if languages else None
+
+            # when saving to file check the last date and use it as start date
+            last_date = get_last_date(save_to_file, "eventDate")
+            if last_date:
+                date_start = last_date
+                logger.info("Resuming collection from %s (last date in %s)", last_date, save_to_file)
+
+            if verbose:
+                print_query_params(
+                    {
+                        "keywords": er_keywords,
+                        "concepts": er_concepts,
+                        "categories": er_categories,
+                        "sources": er_sources,
+                        "date_start": date_start,
+                        "date_end": date_end,
+                        "languages": languages,
+                    }
+                )
+
+            # creates the query events object
+            q = ER.QueryEventsIter(
+                keywords=er_keywords,
+                conceptUri=er_concepts,
+                categoryUri=er_categories,
+                sourceUri=er_sources,
+                dateStart=date_start,
+                dateEnd=date_end,
+                lang=er_lang,
             )
-
-        # creates the query events object
-        q = ER.QueryEventsIter(
-            keywords=er_keywords,
-            conceptUri=er_concepts,
-            categoryUri=er_categories,
-            sourceUri=er_sources,
-            dateStart=date_start,
-            dateEnd=date_end,
-            lang=er_lang,
-        )
 
         # execute the query and return the iterator
         events = q.execQuery(self._er, sortBy=sort_by, sortByAsc=sort_by_asc, maxItems=max_items)
