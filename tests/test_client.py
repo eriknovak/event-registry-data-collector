@@ -18,8 +18,7 @@ from collector.client import (
 def collector():
     """An EventRegistryCollector with a mocked EventRegistry instance."""
     with mock.patch("collector.client.ER.EventRegistry"):
-        c = EventRegistryCollector(api_key="test-key")
-    return c
+        yield EventRegistryCollector(api_key="test-key")
 
 
 def test_is_concept_uri():
@@ -36,7 +35,9 @@ def test_is_category_uri():
 
 def test_is_source_uri():
     assert is_source_uri("delo.si")
+    assert is_source_uri("bbc.co.uk")
     assert not is_source_uri("BBC")
+    assert not is_source_uri("http://en.wikipedia.org/wiki/BBC")
 
 
 def test_get_concepts_uri_passthrough(collector):

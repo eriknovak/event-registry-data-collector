@@ -91,9 +91,9 @@ def is_source_uri(value: str) -> bool:
         value (str): The source name or URI.
 
     Returns:
-        bool: True if the value looks like a domain (contains a dot).
+        bool: True if the value looks like a domain (contains a dot and is not an HTTP URL).
     """
-    return "." in value
+    return "." in value and not value.startswith(("http://", "https://"))
 
 
 @dataclass(frozen=True)
