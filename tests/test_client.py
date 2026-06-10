@@ -81,3 +81,33 @@ def test_get_sources_resolves_and_warns(collector, caplog):
         result = collector.get_sources(["BBC"])
     assert result == [URI("BBC", "bbc.co.uk")]
     assert "suggest sources" in caplog.text
+
+
+def test_suggest_concepts_default_types(collector):
+    """Without types the SDK is queried with the broad 'concepts' source."""
+    collector._er.suggestConcepts.return_value = [{"uri": "u", "type": "wiki"}]
+    result = collector.suggest_concepts("luka")
+    assert result == [{"uri": "u", "type": "wiki"}]
+    collector._er.suggestConcepts.assert_called_once_with(
+        "luka", sources=["concepts"], lang="eng", count=20
+    )
+
+
+def test_suggest_concepts_with_types(collector):
+    collector._er.suggestConcepts.return_value = []
+    collector.suggest_concepts("luka", types=["person", "org"], lang="slv", count=5)
+    collector._er.suggestConcepts.assert_called_once_with(
+        "luka", sources=["person", "org"], lang="slv", count=5
+    )
+
+
+def test_suggest_categories(collector):
+    collector._er.suggestCategories.return_value = [{"uri": "dmoz/Sports"}]
+    assert collector.suggest_categories("sport", count=5) == [{"uri": "dmoz/Sports"}]
+    collector._er.suggestCategories.assert_called_once_with("sport", count=5)
+
+
+def test_suggest_sources(collector):
+    collector._er.suggestNewsSources.return_value = [{"uri": "delo.si", "title": "Delo"}]
+    assert collector.suggest_sources("delo") == [{"uri": "delo.si", "title": "Delo"}]
+    collector._er.suggestNewsSources.assert_called_once_with("delo", count=20)

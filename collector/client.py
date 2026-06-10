@@ -220,6 +220,56 @@ class EventRegistryCollector:
             uris.append(URI(k, uri))
         return uris
 
+    def suggest_concepts(
+        self,
+        prefix: str,
+        types: Optional[List[str]] = None,
+        lang: str = "eng",
+        count: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Gets the ranked concept suggestions for the given prefix.
+
+        Args:
+            prefix (str): The text the concept should match.
+            types (Optional[List[str]]): The concept types to return. Valid
+                values: person, loc, org, wiki, entities, concepts. If None,
+                all concept types are returned (Default: None).
+            lang (str): The language of the prefix (Default: 'eng').
+            count (int): The number of suggestions to return (Default: 20).
+
+        Returns:
+            List[Dict[str, Any]]: The ranked concept candidates with their
+                uri, type and label.
+        """
+        return self._er.suggestConcepts(
+            prefix, sources=types or ["concepts"], lang=lang, count=count
+        )
+
+    def suggest_categories(self, prefix: str, count: int = 20) -> List[Dict[str, Any]]:
+        """Gets the ranked category suggestions for the given prefix.
+
+        Args:
+            prefix (str): The text the category name should match.
+            count (int): The number of suggestions to return (Default: 20).
+
+        Returns:
+            List[Dict[str, Any]]: The ranked category candidates with their uri.
+        """
+        return self._er.suggestCategories(prefix, count=count)
+
+    def suggest_sources(self, prefix: str, count: int = 20) -> List[Dict[str, Any]]:
+        """Gets the ranked news source suggestions for the given prefix.
+
+        Args:
+            prefix (str): The text the source name or uri should match.
+            count (int): The number of suggestions to return (Default: 20).
+
+        Returns:
+            List[Dict[str, Any]]: The ranked source candidates with their
+                uri and title.
+        """
+        return self._er.suggestNewsSources(prefix, count=count)
+
     def get_articles(
         self,
         keywords: Optional[List[str]] = None,
