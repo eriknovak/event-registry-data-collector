@@ -105,8 +105,8 @@ This `{action}` is used to acquire news events. To acquire them one can provide 
 | sort_by            | True     | The sort order of events (Default: `'date'`)                                                                                                                                                                     |
 | sort_by_asc        | True     | The direction of the sort (Default: True)                                                                                                                                                                        |
 | max_items          | True     | The number of events to collect. If its -1, then there is no limit (Default: -1)                                                                                                                                 |
-| save_to_file       | True     | The path to the file to store the events. If this parameter is provided, it checks the date of the last acquired article and replaces the date_start parameter with the date of the last article (Default: None) |
-| save_format        | True     | The format in which to store the events. If `'array'`, it stores the articles into an array of objects. Otherwise, each line consists of one article object (Default: None)                                      |
+| save_to_file       | True     | The path to the file to store the events. If this parameter is provided, it checks the date of the last acquired event and replaces the date_start parameter with the date of the last event (Default: None)     |
+| save_format        | True     | The format in which to store the events. If `'array'`, it stores the events into an array of objects. Otherwise, each line consists of one event object (Default: None)                                          |
 | verbose            | True     | If true, outputs the query parameters retrieved by Event Registry (Default: False)                                                                                                                               |
 
 An example of the `events` action command is presented bellow.

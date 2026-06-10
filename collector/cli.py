@@ -528,6 +528,10 @@ def main() -> None:
         # parse the arguments and call whatever function was selected
         args = argparser.parse_args()
 
+        if not getattr(args, "action", None):
+            argparser.print_help()
+            sys.exit(1)
+
         # event registry API values
         max_repeat_request = getattr(args, "max_repeat_request", -1)
 
@@ -689,7 +693,7 @@ def main() -> None:
             )
 
         else:
-            raise Exception("Argument command is unknown: {}".format(args.command))
+            raise Exception(f"Argument command is unknown: {args.action}")
     except KeyboardInterrupt:
         try:
             sys.exit(0)
