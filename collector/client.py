@@ -112,7 +112,7 @@ def get_last_date(file_path: Optional[str], date_field: str) -> Optional[str]:
     if not (file_path and os.path.isfile(file_path)):
         return None
     with open(file_path) as in_file:
-        lines = in_file.readlines()
+        lines = [line for line in in_file.readlines() if line.strip()]
     if len(lines) == 0:
         return None
     return json.loads(lines[-1]).get(date_field)
@@ -358,6 +358,8 @@ class EventRegistryCollector:
             flat_params = [keywords, concepts, categories, sources, languages, date_start, date_end]
             if any(p is not None for p in flat_params):
                 raise ValueError("get_articles: 'query' cannot be combined with the flat query parameters")
+            if "$query" not in query:
+                raise ValueError('get_articles: \'query\' must be in the full {"$query": ...} form')
 
             last_date = get_last_date(save_to_file, "date")
             if last_date:
@@ -377,6 +379,7 @@ class EventRegistryCollector:
             last_date = get_last_date(save_to_file, "date")
             if last_date:
                 date_start = last_date
+                logger.info("Resuming collection from %s (last date in %s)", last_date, save_to_file)
 
             if verbose:
                 print_query_params(
@@ -476,6 +479,8 @@ class EventRegistryCollector:
             flat_params = [keywords, concepts, categories, sources, languages, date_start, date_end]
             if any(p is not None for p in flat_params):
                 raise ValueError("get_events: 'query' cannot be combined with the flat query parameters")
+            if "$query" not in query:
+                raise ValueError('get_events: \'query\' must be in the full {"$query": ...} form')
 
             last_date = get_last_date(save_to_file, "eventDate")
             if last_date:
@@ -495,6 +500,7 @@ class EventRegistryCollector:
             last_date = get_last_date(save_to_file, "eventDate")
             if last_date:
                 date_start = last_date
+                logger.info("Resuming collection from %s (last date in %s)", last_date, save_to_file)
 
             if verbose:
                 print_query_params(

@@ -129,6 +129,22 @@ def test_get_last_date_reads_last_line(tmp_path):
     assert get_last_date(str(path), "date") == "2026-01-02"
 
 
+def test_get_last_date_empty_file(tmp_path):
+    from collector.client import get_last_date
+
+    path = tmp_path / "empty.jsonl"
+    path.write_text("")
+    assert get_last_date(str(path), "date") is None
+
+
+def test_get_last_date_ignores_trailing_blank_lines(tmp_path):
+    from collector.client import get_last_date
+
+    path = tmp_path / "articles.jsonl"
+    path.write_text(json.dumps({"date": "2026-01-02"}) + "\n\n")
+    assert get_last_date(str(path), "date") == "2026-01-02"
+
+
 def test_get_articles_complex_query(collector):
     """A complex query is routed to initWithComplexQuery."""
     query = {"$query": {"conceptUri": "http://en.wikipedia.org/wiki/Slovenia"}}
@@ -179,3 +195,14 @@ def test_get_events_complex_query_resumes_date(collector, tmp_path):
 def test_get_events_complex_query_rejects_flat_params(collector):
     with pytest.raises(ValueError, match="cannot be combined"):
         collector.get_events(query={"$query": {}}, languages=["eng"])
+
+
+def test_get_articles_complex_query_requires_query_key(collector):
+    """A bare query dict without $query is rejected up front."""
+    with pytest.raises(ValueError, match="full"):
+        collector.get_articles(query={"conceptUri": "x"})
+
+
+def test_get_events_complex_query_requires_query_key(collector):
+    with pytest.raises(ValueError, match="full"):
+        collector.get_events(query={"conceptUri": "x"})
