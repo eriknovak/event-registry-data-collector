@@ -1,5 +1,6 @@
 """Tests for the EventRegistryCollector client (with a mocked ER SDK)."""
 
+import json
 import logging
 from unittest import mock
 
@@ -112,3 +113,69 @@ def test_suggest_sources(collector):
     collector._er.suggestNewsSources.return_value = [{"uri": "delo.si", "title": "Delo"}]
     assert collector.suggest_sources("delo") == [{"uri": "delo.si", "title": "Delo"}]
     collector._er.suggestNewsSources.assert_called_once_with("delo", count=20)
+
+
+def test_get_last_date_missing_file(tmp_path):
+    from collector.client import get_last_date
+
+    assert get_last_date(str(tmp_path / "missing.jsonl"), "date") is None
+
+
+def test_get_last_date_reads_last_line(tmp_path):
+    from collector.client import get_last_date
+
+    path = tmp_path / "articles.jsonl"
+    path.write_text(json.dumps({"date": "2026-01-01"}) + "\n" + json.dumps({"date": "2026-01-02"}) + "\n")
+    assert get_last_date(str(path), "date") == "2026-01-02"
+
+
+def test_get_articles_complex_query(collector):
+    """A complex query is routed to initWithComplexQuery."""
+    query = {"$query": {"conceptUri": "http://en.wikipedia.org/wiki/Slovenia"}}
+    with mock.patch("collector.client.ER.QueryArticlesIter") as mock_iter:
+        mock_iter.initWithComplexQuery.return_value.execQuery.return_value = []
+        result = collector.get_articles(query=query)
+    mock_iter.initWithComplexQuery.assert_called_once_with(query)
+    assert result == []
+
+
+def test_get_articles_complex_query_rejects_flat_params(collector):
+    """Combining a complex query with flat parameters is an error."""
+    with pytest.raises(ValueError, match="cannot be combined"):
+        collector.get_articles(query={"$query": {}}, concepts=["slovenia"])
+
+
+def test_get_articles_complex_query_resumes_date(collector, tmp_path):
+    """An existing save file injects the last date into the complex query."""
+    save_file = tmp_path / "articles.jsonl"
+    save_file.write_text(json.dumps({"date": "2026-01-02"}) + "\n")
+    with mock.patch("collector.client.ER.QueryArticlesIter") as mock_iter:
+        mock_iter.initWithComplexQuery.return_value.execQuery.return_value = []
+        collector.get_articles(query={"$query": {"conceptUri": "x"}}, save_to_file=str(save_file))
+    expected = {"$query": {"$and": [{"conceptUri": "x"}, {"dateStart": "2026-01-02"}]}}
+    mock_iter.initWithComplexQuery.assert_called_once_with(expected)
+
+
+def test_get_events_complex_query(collector):
+    query = {"$query": {"conceptUri": "x"}}
+    with mock.patch("collector.client.ER.QueryEventsIter") as mock_iter:
+        mock_iter.initWithComplexQuery.return_value.execQuery.return_value = []
+        result = collector.get_events(query=query)
+    mock_iter.initWithComplexQuery.assert_called_once_with(query)
+    assert result == []
+
+
+def test_get_events_complex_query_resumes_date(collector, tmp_path):
+    """Events resume from the eventDate of the last stored event."""
+    save_file = tmp_path / "events.jsonl"
+    save_file.write_text(json.dumps({"eventDate": "2026-01-03"}) + "\n")
+    with mock.patch("collector.client.ER.QueryEventsIter") as mock_iter:
+        mock_iter.initWithComplexQuery.return_value.execQuery.return_value = []
+        collector.get_events(query={"$query": {"conceptUri": "x"}}, save_to_file=str(save_file))
+    expected = {"$query": {"$and": [{"conceptUri": "x"}, {"dateStart": "2026-01-03"}]}}
+    mock_iter.initWithComplexQuery.assert_called_once_with(expected)
+
+
+def test_get_events_complex_query_rejects_flat_params(collector):
+    with pytest.raises(ValueError, match="cannot be combined"):
+        collector.get_events(query={"$query": {}}, languages=["eng"])
