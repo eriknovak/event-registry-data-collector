@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "collector"
+version = "1.0.0"
+description = "Event Registry Collector CLI"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Erik Novak", email = "erik.novak@ijs.si" },
+]
+requires-python = ">=3.9"
+dependencies = [
+    "eventregistry>=9.1",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+collect = "collector.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["collector", "collector.*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
