@@ -60,6 +60,42 @@ def print_query_params(params: Dict[str, Any]) -> None:
     logger.info(message)
 
 
+def is_concept_uri(value: str) -> bool:
+    """Checks whether the value is already a concept URI.
+
+    Args:
+        value (str): The concept name or URI.
+
+    Returns:
+        bool: True if the value is a URI (starts with http:// or https://).
+    """
+    return value.startswith(("http://", "https://"))
+
+
+def is_category_uri(value: str) -> bool:
+    """Checks whether the value is already a category URI.
+
+    Args:
+        value (str): The category name or URI.
+
+    Returns:
+        bool: True if the value is a URI (starts with dmoz/ or news/).
+    """
+    return value.startswith(("dmoz/", "news/"))
+
+
+def is_source_uri(value: str) -> bool:
+    """Checks whether the value is already a source URI.
+
+    Args:
+        value (str): The source name or URI.
+
+    Returns:
+        bool: True if the value looks like a domain (contains a dot).
+    """
+    return "." in value
+
+
 @dataclass(frozen=True)
 class URI:
     """The keyword and concept pair used in the event registry collector.
@@ -115,41 +151,74 @@ class EventRegistryCollector:
     def get_concepts(self, concepts: List[str]) -> List[URI]:
         """Get the list of event registry concepts.
 
+        Values that are already URIs are passed through unchanged; plain
+        names are auto-resolved with a warning.
+
         Args:
-            concepts (List[str]): The list of concepts for
-                retrieving the concept URIs.
+            concepts (List[str]): The list of concept names or URIs.
 
         Returns:
-            List[URI]: A list of URI objects with the given
-                concept URIs.
+            List[URI]: A list of URI objects with the given concept URIs.
         """
-        return [URI(k, self._er.getConceptUri(k)) for k in concepts]
+        uris = []
+        for k in concepts:
+            if is_concept_uri(k):
+                uris.append(URI(k, k))
+                continue
+            uri = self._er.getConceptUri(k)
+            logger.warning(
+                "resolved %r -> %s (use 'collect suggest concepts' to pick explicitly)", k, uri
+            )
+            uris.append(URI(k, uri))
+        return uris
 
     def get_categories(self, categories: List[str]) -> List[URI]:
         """Get the list of event registry categories.
 
+        Values that are already URIs are passed through unchanged; plain
+        names are auto-resolved with a warning.
+
         Args:
-            categories (List[str]): The list of categories for
-                retrieving the categories URIs.
+            categories (List[str]): The list of category names or URIs.
 
         Returns:
-            List[URI]: A list of URI objects with the given
-                categories URIs.
+            List[URI]: A list of URI objects with the given category URIs.
         """
-        return [URI(k, self._er.getCategoryUri(k)) for k in categories]
+        uris = []
+        for k in categories:
+            if is_category_uri(k):
+                uris.append(URI(k, k))
+                continue
+            uri = self._er.getCategoryUri(k)
+            logger.warning(
+                "resolved %r -> %s (use 'collect suggest categories' to pick explicitly)", k, uri
+            )
+            uris.append(URI(k, uri))
+        return uris
 
     def get_sources(self, sources: List[str]) -> List[URI]:
         """Get the list of source uris.
 
+        Values that look like domains are passed through unchanged; plain
+        names are auto-resolved with a warning.
+
         Args:
-            sources (List[str]): The list of sources for
-                retrieving the source URIs.
+            sources (List[str]): The list of source names or URIs.
 
         Returns:
-            List[URI]: A list of URI objects with the given
-                source URIs.
+            List[URI]: A list of URI objects with the given source URIs.
         """
-        return [URI(k, self._er.getSourceUri(k)) for k in sources]
+        uris = []
+        for k in sources:
+            if is_source_uri(k):
+                uris.append(URI(k, k))
+                continue
+            uri = self._er.getSourceUri(k)
+            logger.warning(
+                "resolved %r -> %s (use 'collect suggest sources' to pick explicitly)", k, uri
+            )
+            uris.append(URI(k, uri))
+        return uris
 
     def get_articles(
         self,
