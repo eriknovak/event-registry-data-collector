@@ -232,8 +232,9 @@ class EventRegistryCollector:
         Args:
             prefix (str): The text the concept should match.
             types (Optional[List[str]]): The concept types to return. Valid
-                values: person, loc, org, wiki, entities, concepts. If None,
-                all concept types are returned (Default: None).
+                values: person, loc, org, wiki, entities (person + loc + org),
+                concepts (entities + wiki). If None, the 'concepts' source is
+                used, which covers all types (Default: None).
             lang (str): The language of the prefix (Default: 'eng').
             count (int): The number of suggestions to return (Default: 20).
 

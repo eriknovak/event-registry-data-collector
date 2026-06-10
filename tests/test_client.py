@@ -94,6 +94,7 @@ def test_suggest_concepts_default_types(collector):
 
 
 def test_suggest_concepts_with_types(collector):
+    """Explicit types are forwarded as the SDK sources parameter."""
     collector._er.suggestConcepts.return_value = []
     collector.suggest_concepts("luka", types=["person", "org"], lang="slv", count=5)
     collector._er.suggestConcepts.assert_called_once_with(
