@@ -1,0 +1,15 @@
+{
+  "$query": {
+    "$and": [
+      {"conceptUri": "http://en.wikipedia.org/wiki/Presidency_of_the_Council_of_the_European_Union"},
+      {
+        "$or": [
+          {"conceptUri": "http://en.wikipedia.org/wiki/Slovenia"},
+          {"keyword": "predsedovanje", "keywordLoc": "title,body"}
+        ]
+      },
+      {"lang": "slv"},
+      {"$not": {"categoryUri": "dmoz/Sports"}}
+    ]
+  }
+}
