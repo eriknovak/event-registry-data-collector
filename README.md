@@ -250,13 +250,49 @@ one demonstrates).
 
 ## Periodic Collection
 
-The [scripts/cronjob.sh](./scripts/cronjob.sh) script collects the events and event articles
-of the past week. It uses uv when available and falls back to the local `.venv` otherwise,
-so it can be registered as a cron job directly:
+The [scripts/backfill.py](./scripts/backfill.py) script collects Slovenian news one weekly
+window at a time, walking backward through history. Windows are **completed Mon–Sun ISO
+weeks**, anchored at the most recent Sunday strictly before today, so window keys are
+canonical regardless of which day the script runs on; a `--end-date` falling mid-week is
+snapped down to the Sunday of the enclosing completed week (with a warning). The sources are
+read from [scripts/sources.txt](./scripts/sources.txt) (one source URI per line; blank lines
+and `#` comments are ignored), and each window is saved to
+`/vault/data/SLM4IE/raw/slovenian_news/{start}_{end}.jsonl`.
+
+Coverage is tracked in a manifest (`coverage.json`, alongside the data) that records which
+sources were collected for which week. This means that after you add a new outlet to
+`sources.txt`, re-running only collects the new `(source × week)` combinations instead of
+re-downloading everything; new results for an already-covered week land in a fresh
+`{start}_{end}.rN.jsonl` file so the existing data is never overwritten or truncated. An
+exclusive lock file (`coverage.json.lock`) prevents concurrent runs from racing on the
+manifest, partial output files left by a failed collector run are deleted so retries never
+duplicate articles, and a missing `API_KEY` (environment or `.env`) is reported up front
+before any window is attempted.
 
 ```bash
-# run the collection every Sunday at midnight
-0 0 * * 0 /path/to/event-registry-data-collector/scripts/cronjob.sh
+# backfill the last 12 weeks (default)
+uv run scripts/backfill.py
+
+# backfill until a specific date (or use --weeks N)
+uv run scripts/backfill.py --start-date 2026-01-01
+
+# anchor at a specific week; mid-week dates snap down to the enclosing completed week
+uv run scripts/backfill.py --weeks 4 --end-date 2026-05-31
+
+# preview the planned work without collecting anything
+uv run scripts/backfill.py --weeks 4 --dry-run
+```
+
+The [scripts/cronjob.sh](./scripts/cronjob.sh) script is a thin wrapper around
+`backfill.py --weeks 2`: it collects the two most recently completed weeks and updates the
+same manifest, so periodic runs and historic backfills share one source of truth.
+Already-covered windows are skipped at zero cost, so the extra week self-heals a missed cron
+run. It uses uv when available and falls back to `python3` otherwise, so it can be registered
+as a cron job directly:
+
+```bash
+# run every Monday at 02:30, appending output to a log file
+30 2 * * 1 /path/to/event-registry-data-collector/scripts/cronjob.sh >> /path/to/cronjob.log 2>&1
 ```
 
 ## Development
