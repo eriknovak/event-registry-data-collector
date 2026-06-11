@@ -1,0 +1,14 @@
+{
+  "$query": {
+    "$and": [
+      {
+        "$or": [
+          {"conceptUri": "http://en.wikipedia.org/wiki/Artificial_intelligence"},
+          {"conceptUri": "http://en.wikipedia.org/wiki/Machine_learning"}
+        ]
+      },
+      {"$not": {"keyword": "cryptocurrency"}},
+      {"lang": "eng"}
+    ]
+  }
+}

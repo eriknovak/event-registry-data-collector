@@ -1,0 +1,14 @@
+{
+  "$query": {
+    "$and": [
+      {"keyword": "elections"},
+      {"sourceLocationUri": "http://en.wikipedia.org/wiki/Slovenia"},
+      {
+        "$or": [
+          {"lang": "eng"},
+          {"lang": "slv"}
+        ]
+      }
+    ]
+  }
+}

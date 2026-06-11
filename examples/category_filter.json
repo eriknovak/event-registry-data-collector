@@ -1,0 +1,10 @@
+{
+  "$query": {
+    "$and": [
+      {"conceptUri": "http://en.wikipedia.org/wiki/Climate_change"},
+      {"categoryUri": "dmoz/Science"},
+      {"$not": {"categoryUri": "dmoz/Sports"}},
+      {"lang": "eng"}
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$query": {
+    "$and": [
+      {
+        "keyword": "artificial intelligence",
+        "keywordLoc": "title",
+        "keywordSearchMode": "phrase"
+      },
+      {"lang": "eng"}
+    ]
+  }
+}

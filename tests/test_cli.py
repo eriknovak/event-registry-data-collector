@@ -53,10 +53,10 @@ def test_articles_and_events_parsers_accept_query_file():
     from collector.cli import create_argparser
 
     parser = create_argparser()
-    args = parser.parse_args(["articles", "--query_file=queries/eu.json"])
-    assert args.query_file == "queries/eu.json"
-    args = parser.parse_args(["events", "--query_file=queries/eu.json"])
-    assert args.query_file == "queries/eu.json"
+    args = parser.parse_args(["articles", "--query_file=examples/eu.json"])
+    assert args.query_file == "examples/eu.json"
+    args = parser.parse_args(["events", "--query_file=examples/eu.json"])
+    assert args.query_file == "examples/eu.json"
 
 
 def test_run_suggest_routes_by_type(capsys):

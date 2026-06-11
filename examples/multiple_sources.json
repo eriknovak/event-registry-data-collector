@@ -1,0 +1,15 @@
+{
+  "$query": {
+    "$and": [
+      {"keyword": "artificial intelligence"},
+      {
+        "$or": [
+          {"sourceUri": "bbc.com"},
+          {"sourceUri": "theguardian.com"},
+          {"sourceUri": "reuters.com"}
+        ]
+      },
+      {"lang": "eng"}
+    ]
+  }
+}

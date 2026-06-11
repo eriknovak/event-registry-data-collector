@@ -1,0 +1,13 @@
+{
+  "$query": {
+    "$and": [
+      {"conceptUri": "http://en.wikipedia.org/wiki/Olympic_Games"},
+      {"dateStart": "2024-07-26", "dateEnd": "2024-08-11"}
+    ]
+  },
+  "$filter": {
+    "dataType": ["news", "blog"],
+    "isDuplicate": "skipDuplicates",
+    "minSentiment": 0.3
+  }
+}

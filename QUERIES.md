@@ -64,12 +64,12 @@ collect event_articles_from_file \
 collect suggest concepts "slovenia" --types=loc
 collect suggest concepts "council of the european union"
 
-# 2. put the chosen URIs into a query file (see queries/eu_presidency.json)
+# 2. put the chosen URIs into a query file (see examples/eu_presidency.json)
 
 # 3. collect the events matching the complex query
 collect events \
     --max_repeat_request=5 \
-    --query_file=./queries/eu_presidency.json \
+    --query_file=./examples/eu_presidency.json \
     --save_to_file=./data/events_eu_presidency.jsonl
 
 # 4. get the articles of the collected events

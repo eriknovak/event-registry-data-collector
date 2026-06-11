@@ -1,0 +1,19 @@
+{
+  "$query": {
+    "$and": [
+      {
+        "$or": [
+          {"sourceUri": "rtvslo.si"},
+          {"sourceUri": "delo.si"},
+          {"sourceUri": "24ur.com"},
+          {"sourceUri": "siol.net"},
+          {"sourceUri": "dnevnik.si"}
+        ]
+      },
+      {"lang": "slv"}
+    ]
+  },
+  "$filter": {
+    "isDuplicate": "skipDuplicates"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "$query": {
+    "$and": [
+      {
+        "conceptUri": {
+          "$and": [
+            "http://en.wikipedia.org/wiki/Artificial_intelligence",
+            "http://en.wikipedia.org/wiki/European_Union"
+          ]
+        }
+      },
+      {
+        "$or": [
+          {
+            "keyword": {"$or": ["AI Act", "AI regulation"]},
+            "keywordLoc": "title,body",
+            "keywordSearchMode": "phrase"
+          },
+          {"categoryUri": "dmoz/Computers/Artificial_Intelligence"}
+        ]
+      },
+      {"locationUri": "http://en.wikipedia.org/wiki/Brussels"},
+      {
+        "sourceLocationUri": {
+          "$or": [
+            "http://en.wikipedia.org/wiki/Belgium",
+            "http://en.wikipedia.org/wiki/Germany"
+          ]
+        }
+      },
+      {"sourceGroupUri": "general/AI"},
+      {"authorUri": "jane_doe@example.com"},
+      {"lang": {"$or": ["eng", "deu"]}},
+      {"dateStart": "2024-01-01", "dateEnd": "2024-12-31"},
+      {"dateMention": ["2024-08-01"]},
+      {"minArticlesInEvent": 5, "maxArticlesInEvent": 200},
+      {
+        "$not": {
+          "categoryUri": {
+            "$or": ["dmoz/Sports", "dmoz/Society/Politics/Conspiracy"]
+          }
+        }
+      },
+      {"$not": {"keyword": "sponsored", "keywordLoc": "title"}}
+    ]
+  },
+  "$filter": {
+    "dataType": ["news", "pr"],
+    "isDuplicate": "skipDuplicates",
+    "hasDuplicate": "keepAll",
+    "hasEvent": "skipArticlesWithoutEvent",
+    "startSourceRankPercentile": 0,
+    "endSourceRankPercentile": 30,
+    "minSentiment": -0.2,
+    "maxSentiment": 0.8
+  }
+}

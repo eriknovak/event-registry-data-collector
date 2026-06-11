@@ -231,20 +231,22 @@ advanced query language to the `articles` or `events` action via `--query_file`:
 ```bash
 uv run collect events \
     --max_repeat_request=5 \
-    --query_file=./queries/eu_presidency.json \
+    --query_file=./examples/eu_presidency.json \
     --save_to_file=./data/eu_presidency_events.jsonl
 ```
 
 The file contains a `$query` object built from `$and`/`$or`/`$not` operators (see
-[queries/eu_presidency.json](./queries/eu_presidency.json) for an example). A bare query
+[examples/eu_presidency.json](./examples/eu_presidency.json) for an example). A bare query
 object without the `$query` wrapper is also accepted. When `--save_to_file` points to an
 existing file, the date of the last stored item is injected into the query automatically,
 so repeated runs only collect new items.
 
 ## More Examples
 
-Additional ready-to-use query examples are available in [QUERIES.md](./QUERIES.md), and an
-example of a complex query file is stored in the [queries](./queries) folder.
+Additional ready-to-use CLI walkthroughs are available in [QUERIES.md](./QUERIES.md), and a
+collection of complex query files for `--query_file` is stored in the
+[examples](./examples) folder (see [examples/README.md](./examples/README.md) for what each
+one demonstrates).
 
 ## Periodic Collection
 
