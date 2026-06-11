@@ -1,0 +1,23 @@
+# Source list for periodic collection (scripts/backfill.py).
+#
+# Copy this file to scripts/sources.txt and edit it to your outlets:
+#   cp scripts/sources.txt.example scripts/sources.txt
+#
+# One source URI per line. Blank lines and lines starting with '#' are ignored.
+siol.net
+novice.svet24.si
+dnevnik.si
+slovenskenovice.si
+sta.si
+mladina.si
+delo.si
+rtvslo.si
+vecer.com
+celje.info
+ekipa24.si
+monitor.si
+# finance.si
+24ur.com
+n1info.si
+gov.si
+primorske.si

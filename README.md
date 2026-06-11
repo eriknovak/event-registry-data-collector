@@ -243,8 +243,7 @@ so repeated runs only collect new items.
 
 ## More Examples
 
-Additional ready-to-use CLI walkthroughs are available in [QUERIES.md](./QUERIES.md), and a
-collection of complex query files for `--query_file` is stored in the
+A collection of ready-to-use complex query files for `--query_file` is stored in the
 [examples](./examples) folder (see [examples/README.md](./examples/README.md) for what each
 one demonstrates).
 
@@ -255,9 +254,11 @@ window at a time, walking backward through history. Windows are **completed Monâ
 weeks**, anchored at the most recent Sunday strictly before today, so window keys are
 canonical regardless of which day the script runs on; a `--end-date` falling mid-week is
 snapped down to the Sunday of the enclosing completed week (with a warning). The sources are
-read from [scripts/sources.txt](./scripts/sources.txt) (one source URI per line; blank lines
-and `#` comments are ignored), and each window is saved to
-`/vault/data/SLM4IE/raw/slovenian_news/{start}_{end}.jsonl`.
+read from `scripts/sources.txt` (one source URI per line; blank lines and `#` comments are
+ignored), and each window is saved to
+`/vault/data/SLM4IE/raw/slovenian_news/{start}_{end}.jsonl`. The source list is local and
+git-ignored â€” copy [scripts/sources.txt.example](./scripts/sources.txt.example) to
+`scripts/sources.txt` and edit it to your outlets.
 
 Coverage is tracked in a manifest (`coverage.json`, alongside the data) that records which
 sources were collected for which week. This means that after you add a new outlet to
