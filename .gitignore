@@ -106,3 +106,6 @@ venv.bak/
 /data/**
 commands.txt
 .vscode
+
+# local source list for periodic collection
+scripts/sources.txt
