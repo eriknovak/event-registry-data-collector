@@ -66,7 +66,7 @@ def load_query_file(path: str) -> Dict[str, Any]:
     """
     if not os.path.isfile(path):
         raise ValueError(f"Query file not found: {path}")
-    with open(path) as in_file:
+    with open(path, encoding="utf-8") as in_file:
         try:
             query = json.load(in_file)
         except json.JSONDecodeError as error:
