@@ -29,7 +29,7 @@ def save_as_array(file: IO[str], articles: Iterable[Any]) -> None:
         articles (Iterable[Any]): The iterator with all of the acquired
             articles.
     """
-    json.dump([a for a in articles], file)
+    json.dump([a for a in articles], file, ensure_ascii=False)
 
 
 def save_as_separate_line(file: IO[str], articles: Iterable[Any]) -> None:
@@ -43,7 +43,7 @@ def save_as_separate_line(file: IO[str], articles: Iterable[Any]) -> None:
     for article in articles:
         try:
             # write the article json to the file
-            json.dump(article, file)
+            json.dump(article, file, ensure_ascii=False)
             file.write("\n")
         except (TypeError, ValueError) as error:
             logger.warning("Skipping article that could not be serialized: %s", error)
@@ -66,7 +66,7 @@ def save_result_in_file(articles: Iterable[Any], file_path: str, save_format: Op
     # create the folder directory
     create_folder_directory(file_path)
     # store the events
-    with open(file_path, "a") as f:
+    with open(file_path, "a", encoding="utf-8") as f:
         if save_format == "array":
             save_as_array(f, articles)
         else:

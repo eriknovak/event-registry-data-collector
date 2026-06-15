@@ -1,37 +1,27 @@
 #!/bin/bash
 
+# Periodic collection of recently completed weeks of Slovenian news.
+#
+# This is a thin wrapper around scripts/backfill.py with --weeks 2. It collects
+# the two most recently completed Mon-Sun weeks and records coverage in the
+# manifest (coverage.json), so periodic runs and historic backfills share one
+# source of truth and never re-collect the same (source x week) combination.
+# Already-covered windows are skipped at zero cost, so the extra week
+# self-heals holes left by a missed cron run.
+#
+# Any extra flags are passed through to backfill.py, e.g. --output-dir, --lang.
+#
+# Register with cron, e.g. run every Monday at 02:30 and append to a log file:
+#   30 2 * * 1 /path/to/scripts/cronjob.sh >> /path/to/cronjob.log 2>&1
+
 # go to the root of the project
 cd "$(dirname "$0")/.." || exit 1
 
-# activate the local virtual environment if present (fallback for non-uv setups)
-if ! command -v uv &> /dev/null && [ -f ".venv/bin/activate" ]; then
-    source .venv/bin/activate
+echo "[$(date --iso-8601=seconds)] starting periodic collection"
+
+# run the backfill driver with uv if available, otherwise fall back to python3
+if command -v uv &> /dev/null; then
+    uv run scripts/backfill.py --weeks 2 "$@"
+else
+    python3 scripts/backfill.py --weeks 2 "$@"
 fi
-
-# run the collector module with uv if available, otherwise fall back to python3
-run_collector() {
-    if command -v uv &> /dev/null; then
-        uv run python -m collector "$@"
-    else
-        python3 -m collector "$@"
-    fi
-}
-
-# get current week (specify the interval of documents to collect)
-CURRENT_WEEK="$(date -d "-7days" +"%Y-%m-%d")"
-echo "$CURRENT_WEEK"
-
-# get the events about the Slovenian EU presidency
-run_collector \
-    events \
-    --max_repeat_request=5 \
-    --concepts="Presidency of the Council of the European Union,Slovenia" \
-    --date_start="$CURRENT_WEEK" \
-    --save_to_file="./data/eu2021sl/$CURRENT_WEEK.jsonl"
-
-# get the articles of the events acquired with the above command
-run_collector \
-    event_articles_from_file \
-    --max_repeat_request=5 \
-    --event_ids_file="./data/eu2021sl/$CURRENT_WEEK.jsonl" \
-    --save_to_file="./data/eu2021sl/$CURRENT_WEEK"

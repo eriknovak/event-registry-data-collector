@@ -1,0 +1,8 @@
+# Source list for periodic collection (scripts/backfill.py).
+#
+# Copy this file to scripts/sources.txt and edit it to your outlets:
+#   cp scripts/sources.txt.example scripts/sources.txt
+#
+# One source URI per line. Blank lines and lines starting with '#' are ignored.
+
+
