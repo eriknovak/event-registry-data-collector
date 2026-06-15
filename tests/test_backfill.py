@@ -229,3 +229,76 @@ def test_acquire_lock_blocks_second_acquisition(tmp_path):
         lock_file.close()
     # After release the lock can be taken again.
     backfill.acquire_lock(lock_path).close()
+
+
+# ---------------------------------------------------------------------------
+# Date-range error detection
+# ---------------------------------------------------------------------------
+
+
+def test_find_date_range_error_logged_error_body():
+    """Detects an Event Registry error logged from an HTTP 200 {"error": ...} body."""
+    output = (
+        "2026-06-15 INFO collector.client: Resuming collection from 2020-01-05\n"
+        "2026-06-15 ERROR eventregistry: Error while obtaining a list of articles: "
+        "dateStart is not a valid date\n"
+    )
+    line = backfill.find_date_range_error(output)
+    assert line is not None
+    assert "dateStart is not a valid date" in line
+
+
+def test_find_date_range_error_http_400_traceback():
+    """Detects a date complaint raised inside an uncaught HTTP 400 traceback."""
+    output = 'Exception: {"error": "dateEnd is in the future and cannot be used"}\n'
+    assert backfill.find_date_range_error(output) is not None
+
+
+def test_find_date_range_error_archive_window_limit():
+    """Treats the plan's archive limit (data older than ...) as a date-range error."""
+    output = "ERROR: your plan does not allow access to data older than 30 days\n"
+    assert backfill.find_date_range_error(output) is not None
+
+
+def test_find_date_range_error_ignores_resume_log_line():
+    """The benign resume note mentions a date but is not a date-range error."""
+    output = (
+        "2026-06-15 INFO collector.client: Resuming collection from 2020-01-05 "
+        "(last date in 2020-01-01_2020-01-07.jsonl)\n"
+    )
+    assert backfill.find_date_range_error(output) is None
+
+
+def test_find_date_range_error_ignores_unrelated_errors():
+    """A non-date error (e.g. an invalid source) does not abort the backfill."""
+    output = "ERROR eventregistry: invalid sourceUri provided\n"
+    assert backfill.find_date_range_error(output) is None
+
+
+def test_find_date_range_error_empty_output():
+    """Empty collector output yields no detection."""
+    assert backfill.find_date_range_error("") is None
+
+
+# ---------------------------------------------------------------------------
+# Article counting
+# ---------------------------------------------------------------------------
+
+
+def test_count_articles_counts_non_blank_lines(tmp_path):
+    """Counts JSONL article lines, ignoring blank lines."""
+    path = tmp_path / "2020-01-01_2020-01-07.jsonl"
+    path.write_text('{"a": 1}\n{"a": 2}\n\n{"a": 3}\n', encoding="utf-8")
+    assert backfill.count_articles(str(path)) == 3
+
+
+def test_count_articles_empty_file(tmp_path):
+    """An empty output file (zero articles found) counts as 0."""
+    path = tmp_path / "empty.jsonl"
+    path.write_text("", encoding="utf-8")
+    assert backfill.count_articles(str(path)) == 0
+
+
+def test_count_articles_missing_file(tmp_path):
+    """A missing output file counts as 0 rather than raising."""
+    assert backfill.count_articles(str(tmp_path / "nope.jsonl")) == 0

@@ -375,12 +375,76 @@ def pick_output_file(output_dir: str, key: str, known_files: List[str]) -> str:
     return f"{key}.r{index}.jsonl"
 
 
-def run_collector(out_path: str, query: Dict[str, Any], max_repeat: int) -> bool:
+# Lower-cased substrings that, paired with the word "date" on the same line, mark
+# an Event Registry complaint that a queried date is unusable. Requiring both a
+# "date" cue and one of these problem cues keeps ordinary log lines (e.g. the
+# resume note "last date in <file>") from tripping the detector.
+_DATE_PROBLEM_TOKENS = (
+    "invalid",
+    "not valid",
+    "not a valid",
+    "must be",
+    "cannot be",
+    "in the future",
+    "out of range",
+    "later than",
+    "earlier than",
+    "exceeds",
+    "too far",
+    "not allowed",
+    "not supported",
+    "wrong format",
+)
+
+# Standalone cues: a line containing any of these is, on its own, an Event
+# Registry complaint that the requested span is out of bounds (an archive /
+# data-time-window limit). A backfill walking backward only moves further past
+# such a limit, so these are fatal regardless of any accompanying problem word.
+_DATE_WINDOW_CUES = (
+    "time window",
+    "data time window",
+    "forcemaxdatatimewindow",
+    "older than",
+    "out of the date range",
+)
+
+
+def find_date_range_error(output: str) -> Optional[str]:
+    """Scans collector output for an Event Registry date-range complaint.
+
+    Event Registry validates the queried ``dateStart``/``dateEnd`` server-side
+    for complex queries. An invalid range surfaces either as a logged error line
+    (HTTP 200 with an ``{"error": ...}`` body) or inside an uncaught traceback
+    (HTTP 400, which the SDK never retries); both reach this process on the
+    collector's stderr. Plan-imposed archive limits ("data older than ...") count
+    too, since a backfill walking backward only goes further out of range.
+
+    Args:
+        output (str): The captured collector stderr.
+
+    Returns:
+        Optional[str]: The first offending line (stripped), or None if no
+            date-range error was detected.
+    """
+    for raw_line in output.splitlines():
+        line = raw_line.lower()
+        if any(cue in line for cue in _DATE_WINDOW_CUES):
+            return raw_line.strip()
+        if "date" in line and any(token in line for token in _DATE_PROBLEM_TOKENS):
+            return raw_line.strip()
+    return None
+
+
+def run_collector(out_path: str, query: Dict[str, Any], max_repeat: int) -> Tuple[bool, str]:
     """Runs the collector for a single window via uv or python3.
 
     Prefers ``uv run`` and falls back to ``python3``. The query is written to a
     temporary file because ``--query_file`` cannot be combined with the date
     flags. On failure the caller deletes any partial output file.
+
+    The collector's stderr (where it logs Event Registry errors) is streamed to
+    this process's stderr in real time and simultaneously captured so the caller
+    can inspect it for fatal date-range complaints regardless of exit code.
 
     Args:
         out_path (str): Destination JSONL path (must not already exist).
@@ -388,7 +452,8 @@ def run_collector(out_path: str, query: Dict[str, Any], max_repeat: int) -> bool
         max_repeat (int): Value for ``--max_repeat_request``.
 
     Returns:
-        bool: True if the collector exited successfully.
+        Tuple[bool, str]: ``(succeeded, captured_stderr)`` where ``succeeded`` is
+            True if the collector exited successfully.
     """
     fd, query_path = tempfile.mkstemp(suffix=".json")
     try:
@@ -408,11 +473,48 @@ def run_collector(out_path: str, query: Dict[str, Any], max_repeat: int) -> bool
         # ephemeral script environment; the nested uv would warn about it not
         # matching the project's .venv, so let the child resolve the env itself.
         env = {key: value for key, value in os.environ.items() if key != "VIRTUAL_ENV"}
-        result = subprocess.run(cmd, cwd=str(REPO_ROOT), env=env)
-        return result.returncode == 0
+        # Tee stderr: echo each line as it arrives (preserving the live progress
+        # output) while accumulating it so the caller can scan for date-range
+        # errors. stdout stays inherited; the collector writes articles to file.
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(REPO_ROOT),
+            env=env,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        captured: List[str] = []
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            sys.stderr.write(line)
+            sys.stderr.flush()
+            captured.append(line)
+        proc.wait()
+        return proc.returncode == 0, "".join(captured)
     finally:
         if os.path.exists(query_path):
             os.remove(query_path)
+
+
+def count_articles(path: str) -> int:
+    """Counts the collected articles (non-blank JSONL lines) in an output file.
+
+    Each collected article is one line of the collector's JSONL output, and the
+    backfill always writes to a fresh file per run, so the line count is exactly
+    the number of articles found for this request.
+
+    Args:
+        path (str): Path to the collector's JSONL output file.
+
+    Returns:
+        int: The number of non-blank lines, or 0 if the file is absent.
+    """
+    if not os.path.isfile(path):
+        return 0
+    with open(path, encoding="utf-8") as in_file:
+        return sum(1 for line in in_file if line.strip())
 
 
 def main() -> None:
@@ -462,6 +564,7 @@ def main() -> None:
     )
 
     failures = 0
+    total_articles = 0
     for start, end in windows:
         key = f"{start:%Y-%m-%d}_{end:%Y-%m-%d}"
         entry = manifest["windows"].get(key, {})
@@ -483,7 +586,30 @@ def main() -> None:
         print(f"  → {key} collecting {len(needed)} source(s) into {out_name}")
         os.makedirs(output_dir, exist_ok=True)
         query = build_query(needed, args.lang, f"{start:%Y-%m-%d}", f"{end:%Y-%m-%d}")
-        if not run_collector(out_path, query, args.max_repeat_request):
+        succeeded, output = run_collector(out_path, query, args.max_repeat_request)
+
+        # A date-range complaint is fatal: every earlier window walks further back
+        # in time, so it can only hit the same wall. Stop the whole backfill rather
+        # than marking this window covered or retrying it pointlessly. This is
+        # checked independently of the exit code because Event Registry reports an
+        # invalid range as either an HTTP 400 traceback (exit 1) or a logged
+        # {"error": ...} body (exit 0).
+        date_error = find_date_range_error(output)
+        if date_error is not None:
+            if os.path.exists(out_path):
+                os.remove(out_path)
+                print(f"  ✗ {key} removed partial file {out_name}", file=sys.stderr)
+            print(f"  ✗ {key} Event Registry rejected the date range: {date_error}", file=sys.stderr)
+            print(
+                "  ✗ stopping backfill: the queried week is outside the range Event Registry "
+                "will serve (malformed dates, a future window, or beyond your plan's archive "
+                "limit). Earlier weeks walk further back, so continuing would only repeat the "
+                "error. Re-run with a valid range (adjust --start-date / --end-date).",
+                file=sys.stderr,
+            )
+            sys.exit(f"aborted on date-range error at window {key}")
+
+        if not succeeded:
             print(f"  ✗ {key} collector failed; leaving manifest unchanged", file=sys.stderr)
             # The collector creates the file even with zero articles, and the retry
             # re-collects the full window into a fresh filename, so a leftover
@@ -494,11 +620,18 @@ def main() -> None:
             failures += 1
             continue
 
+        # Count what was actually collected and report it so the operator can
+        # gauge how many articles the query found for this window.
+        article_count = count_articles(out_path)
+        total_articles += article_count
+        print(f"  ✓ {key} collected {article_count} article(s) into {out_name}")
+
         # Record coverage only after a successful run.
         run_record = {
             "collected_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "file": out_name,
             "sources": needed,
+            "articles": article_count,
         }
         manifest["windows"][key] = {
             "sources": sorted(covered | set(needed)),
@@ -507,6 +640,7 @@ def main() -> None:
         }
         save_manifest(manifest_path, manifest)
 
+    print(f"Done: collected {total_articles} article(s) across {len(windows)} window(s)")
     if failures:
         sys.exit(f"{failures} window(s) failed; re-run to retry them")
     del lock_file  # released at exit; reference kept alive until here
