@@ -109,7 +109,37 @@ def test_articles_parser_duplicates_defaults_to_keep():
     assert parser.parse_args(["articles", "--duplicates=skip"]).duplicates == "skip"
 
 
-def test_duplicate_filter_maps_the_flag_to_the_sdk_value():
-    from collector.cli import DUPLICATE_FILTERS
+def test_duplicates_flag_reaches_get_articles(monkeypatch):
+    import sys
+    from unittest import mock
 
-    assert DUPLICATE_FILTERS == {"skip": "skipDuplicates", "keep": "keepAll"}
+    from collector.cli import main
+
+    monkeypatch.setenv("API_KEY", "test-key")
+    monkeypatch.setattr(sys, "argv", ["collect", "articles", "--keywords=x", "--duplicates=skip"])
+    with mock.patch("collector.cli.EventRegistryCollector") as er, mock.patch("collector.cli.load_dotenv"):
+        main()
+    assert er.return_value.get_articles.call_args.kwargs["is_duplicate_filter"] == "skipDuplicates"
+
+
+def test_parse_article_fields_ignores_empty_items():
+    from collector.cli import parse_article_fields
+
+    info = parse_article_fields("concepts, categories,")
+    assert info.getConf()["articleInfo"] == {"includeArticleConcepts": True, "includeArticleCategories": True}
+
+
+def test_parse_article_fields_without_fields_keeps_the_defaults():
+    from collector.cli import parse_article_fields
+
+    assert parse_article_fields(None) is None
+    assert parse_article_fields(" , ") is None
+
+
+def test_parse_article_fields_rejects_unknown_fields():
+    import pytest
+
+    from collector.cli import parse_article_fields
+
+    with pytest.raises(ValueError, match="'tone'"):
+        parse_article_fields("tone")

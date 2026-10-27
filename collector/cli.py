@@ -9,7 +9,9 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+import eventregistry as ER
 
 from dotenv import load_dotenv
 
@@ -76,6 +78,23 @@ def render_suggestions(items: List[Dict[str, Any]]) -> str:
     widths = [max(len(row[col]) for row in [header] + rows) for col in range(4)]
     lines = ["  ".join(value.ljust(width) for value, width in zip(row, widths)) for row in [header] + rows]
     return "\n".join(lines)
+
+
+def parse_article_fields(value: Optional[str]) -> Optional[ER.ReturnInfo]:
+    """Turns the --article_fields value into the return info for the query.
+
+    Args:
+        value (Optional[str]): The comma separated article fields, or None.
+
+    Returns:
+        Optional[ER.ReturnInfo]: The return info asking for those fields, or
+            None (the Event Registry defaults) if no field is named.
+
+    Raises:
+        ValueError: If a field is not an ArticleInfoFlags option.
+    """
+    fields = [field.strip() for field in (value or "").split(",") if field.strip()]
+    return article_return_info(fields) if fields else None
 
 
 def get_conflicting_flags(args: argparse.Namespace) -> List[str]:
@@ -597,11 +616,8 @@ def main() -> None:
 
         verbose = args.verbose if hasattr(args, "verbose") and args.verbose else None
         # article details and duplicate handling
-        article_fields = getattr(args, "article_fields", None)
         try:
-            return_info = (
-                article_return_info([f.strip() for f in article_fields.split(",")]) if article_fields else None
-            )
+            return_info = parse_article_fields(getattr(args, "article_fields", None))
         except ValueError as error:
             logger.error(str(error))
             sys.exit(1)

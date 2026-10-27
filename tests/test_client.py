@@ -271,3 +271,8 @@ def test_article_fields_are_the_on_off_options_only():
 
     assert {"concepts", "categories", "links"} <= set(ARTICLE_FIELDS)
     assert "bodyLen" not in ARTICLE_FIELDS
+
+
+def test_get_articles_rejects_an_unknown_duplicate_filter(collector):
+    with pytest.raises(ValueError, match="'skip'"):
+        collector.get_articles(keywords=["x"], is_duplicate_filter="skip")

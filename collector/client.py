@@ -18,6 +18,9 @@ from collector.storage import save_result_in_file
 
 logger = logging.getLogger(__name__)
 
+# the isDuplicateFilter values Event Registry accepts
+DUPLICATE_FILTER_VALUES = ("skipDuplicates", "keepOnlyDuplicates", "keepAll")
+
 # the article fields Event Registry can return: the on/off ArticleInfoFlags options
 ARTICLE_FIELDS = tuple(
     name
@@ -408,7 +411,16 @@ class EventRegistryCollector:
 
         Returns:
             Iterator[Any]: The iterator which goes through all retrieved articles.
+
+        Raises:
+            ValueError: If `query` is combined with the flat query parameters
+                or lacks ``$query``, or `is_duplicate_filter` is unknown.
         """
+        if is_duplicate_filter not in DUPLICATE_FILTER_VALUES:
+            raise ValueError(
+                f"get_articles: unknown is_duplicate_filter {is_duplicate_filter!r}; "
+                f"known: {', '.join(DUPLICATE_FILTER_VALUES)}"
+            )
         if query is not None:
             flat_params = [keywords, concepts, categories, sources, languages, date_start, date_end]
             if any(p is not None for p in flat_params):
