@@ -90,3 +90,26 @@ def test_run_suggest_json_output(capsys):
     import json as json_lib
 
     assert json_lib.loads(capsys.readouterr().out) == [{"uri": "delo.si", "title": "Delo"}]
+
+
+def test_article_parsers_accept_article_fields():
+    from collector.cli import create_argparser
+
+    parser = create_argparser()
+    for action in ("articles", "event_articles", "event_articles_from_file"):
+        args = parser.parse_args([action, "--article_fields=concepts,categories"])
+        assert args.article_fields == "concepts,categories"
+
+
+def test_articles_parser_duplicates_defaults_to_keep():
+    from collector.cli import create_argparser
+
+    parser = create_argparser()
+    assert parser.parse_args(["articles"]).duplicates == "keep"
+    assert parser.parse_args(["articles", "--duplicates=skip"]).duplicates == "skip"
+
+
+def test_duplicate_filter_maps_the_flag_to_the_sdk_value():
+    from collector.cli import DUPLICATE_FILTERS
+
+    assert DUPLICATE_FILTERS == {"skip": "skipDuplicates", "keep": "keepAll"}

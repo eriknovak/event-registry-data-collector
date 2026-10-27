@@ -4,6 +4,7 @@ Retrieves articles, events and other news data from the Event Registry
 service. Contains additional classes used for retrieving and processing.
 """
 
+import inspect
 import json
 import logging
 import os
@@ -16,6 +17,13 @@ from collector.query import inject_date_start
 from collector.storage import save_result_in_file
 
 logger = logging.getLogger(__name__)
+
+# the article fields Event Registry can return: the on/off ArticleInfoFlags options
+ARTICLE_FIELDS = tuple(
+    name
+    for name, param in inspect.signature(ER.ArticleInfoFlags.__init__).parameters.items()
+    if isinstance(param.default, bool)
+)
 
 
 def get_items(obj: Optional[ER.QueryItems]) -> Optional[List[str]]:
@@ -116,6 +124,45 @@ def get_last_date(file_path: Optional[str], date_field: str) -> Optional[str]:
     if len(lines) == 0:
         return None
     return json.loads(lines[-1]).get(date_field)
+
+
+def article_return_info(fields: List[str]) -> ER.ReturnInfo:
+    """Builds the return info that asks Event Registry for extra article fields.
+
+    The fields not named keep the Event Registry defaults.
+
+    Args:
+        fields (List[str]): The ArticleInfoFlags options to switch on, e.g.
+            ['concepts', 'categories'].
+
+    Returns:
+        ER.ReturnInfo: The return info to pass to `get_articles` or
+            `get_event_articles`.
+
+    Raises:
+        ValueError: If a field is not an ArticleInfoFlags option.
+    """
+    unknown = [field for field in fields if field not in ARTICLE_FIELDS]
+    if unknown:
+        raise ValueError(
+            "article_return_info: unknown article fields {}; known: {}".format(
+                ", ".join(repr(field) for field in unknown), ", ".join(ARTICLE_FIELDS)
+            )
+        )
+    return ER.ReturnInfo(articleInfo=ER.ArticleInfoFlags(**{field: True for field in fields}))
+
+
+def add_duplicate_filter(query: Dict[str, Any], is_duplicate_filter: str) -> Dict[str, Any]:
+    """Returns a copy of the complex query with the duplicate filter in its ``$filter``.
+
+    Args:
+        query (Dict[str, Any]): The complex query in the full ``$query`` form.
+        is_duplicate_filter (str): 'skipDuplicates', 'keepOnlyDuplicates' or 'keepAll'.
+
+    Returns:
+        Dict[str, Any]: A new query dict; other ``$filter`` keys are preserved.
+    """
+    return {**query, "$filter": {**query.get("$filter", {}), "isDuplicate": is_duplicate_filter}}
 
 
 @dataclass(frozen=True)
@@ -309,6 +356,8 @@ class EventRegistryCollector:
         save_format: Optional[str] = None,
         verbose: bool = False,
         query: Optional[Dict[str, Any]] = None,
+        return_info: Optional[ER.ReturnInfo] = None,
+        is_duplicate_filter: str = "keepAll",
     ) -> Iterator[Any]:
         """Get the event registry articles.
 
@@ -350,6 +399,12 @@ class EventRegistryCollector:
                 {"$query": ...} form). Cannot be combined with the flat
                 query parameters (keywords, concepts, categories, sources,
                 languages, date_start, date_end) (Default: None).
+            return_info (Optional[ER.ReturnInfo]): The article details to
+                return, e.g. from `article_return_info`. If None, the Event
+                Registry defaults are returned (Default: None).
+            is_duplicate_filter (str): What to do with articles that are
+                duplicates of others: 'skipDuplicates', 'keepOnlyDuplicates'
+                or 'keepAll' (Default: 'keepAll').
 
         Returns:
             Iterator[Any]: The iterator which goes through all retrieved articles.
@@ -365,6 +420,8 @@ class EventRegistryCollector:
             if last_date:
                 query = inject_date_start(query, last_date)
                 logger.info("Resuming collection from %s (last date in %s)", last_date, save_to_file)
+            if is_duplicate_filter != "keepAll":
+                query = add_duplicate_filter(query, is_duplicate_filter)
 
             q = ER.QueryArticlesIter.initWithComplexQuery(query)
         else:
@@ -403,10 +460,13 @@ class EventRegistryCollector:
                 dateStart=date_start,
                 dateEnd=date_end,
                 lang=er_lang,
+                isDuplicateFilter=is_duplicate_filter,
             )
 
         # execute the query and return the iterator
-        articles = q.execQuery(self._er, sortBy=sort_by, sortByAsc=sort_by_asc, maxItems=max_items)
+        articles = q.execQuery(
+            self._er, sortBy=sort_by, sortByAsc=sort_by_asc, returnInfo=return_info, maxItems=max_items
+        )
 
         if save_to_file:
             save_result_in_file(articles, save_to_file, save_format)
@@ -604,8 +664,12 @@ class EventRegistryCollector:
         save_to_file: Optional[str] = None,
         save_format: Optional[str] = None,
         verbose: bool = False,
+        return_info: Optional[ER.ReturnInfo] = None,
     ) -> Iterator[Any]:
         """Get the articles of a certain event.
+
+        Event Registry offers no duplicate filter on the articles of an event,
+        so all of them are returned; each carries its `isDuplicate` flag.
 
         Args:
             event_id (str): The event id from which we get the
@@ -642,6 +706,9 @@ class EventRegistryCollector:
                         be used when storing query results into the same file.
                     None - The articles are stored line-by-line in the file.
             verbose (bool): If true, output the query parameters retrieved by ER (Default: False).
+            return_info (Optional[ER.ReturnInfo]): The article details to
+                return, e.g. from `article_return_info`. If None, the Event
+                Registry defaults are returned (Default: None).
 
         Returns:
             Iterator[Any]: The iterator which goes through all retrieved articles.
@@ -679,7 +746,9 @@ class EventRegistryCollector:
         )
 
         # execute the query and return the iterator
-        articles = q.execQuery(self._er, sortBy=sort_by, sortByAsc=sort_by_asc, maxItems=max_items)
+        articles = q.execQuery(
+            self._er, sortBy=sort_by, sortByAsc=sort_by_asc, returnInfo=return_info, maxItems=max_items
+        )
 
         if save_to_file:
             # saves the articles into the file
@@ -705,6 +774,7 @@ class EventRegistryCollector:
         save_to_folder: Optional[str] = None,
         save_format: Optional[str] = None,
         verbose: bool = False,
+        return_info: Optional[ER.ReturnInfo] = None,
     ) -> List[Dict[str, Any]]:
         """Gets the event articles from a list of event ids stored in a file.
 
@@ -747,6 +817,9 @@ class EventRegistryCollector:
                     'array' - The articles are wrapped into an array.
                     None - The articles are stored line-by-line in the file.
             verbose (bool): If true, output the query parameters retrieved by ER (Default: False).
+            return_info (Optional[ER.ReturnInfo]): The article details to
+                return, e.g. from `article_return_info`. If None, the Event
+                Registry defaults are returned (Default: None).
 
         Returns:
             List[Dict[str, Any]]: The list of event ids with their associated articles.
@@ -798,6 +871,7 @@ class EventRegistryCollector:
                 event_path,
                 save_format,
                 verbose,
+                return_info,
             )
 
             # store the articles and the event id
