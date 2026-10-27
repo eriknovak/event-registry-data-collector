@@ -206,3 +206,73 @@ def test_get_articles_complex_query_requires_query_key(collector):
 def test_get_events_complex_query_requires_query_key(collector):
     with pytest.raises(ValueError, match="full"):
         collector.get_events(query={"conceptUri": "x"})
+
+
+def test_article_return_info_sets_the_named_flags():
+    from collector.client import article_return_info
+
+    info = article_return_info(["concepts", "categories"]).getConf()["articleInfo"]
+    assert info["includeArticleConcepts"] is True
+    assert info["includeArticleCategories"] is True
+    assert "includeArticleLinks" not in info
+
+
+def test_article_return_info_rejects_unknown_fields():
+    from collector.client import article_return_info
+
+    with pytest.raises(ValueError, match="'tone'"):
+        article_return_info(["concepts", "tone"])
+
+
+def test_get_articles_passes_return_info_to_exec_query(collector):
+    """The return info reaches execQuery, so the extra fields come back."""
+    return_info = mock.Mock()
+    with mock.patch("collector.client.ER.QueryArticlesIter") as mock_iter:
+        mock_iter.return_value.execQuery.return_value = []
+        collector.get_articles(keywords=["x"], return_info=return_info)
+    assert mock_iter.return_value.execQuery.call_args.kwargs["returnInfo"] is return_info
+
+
+def test_get_articles_passes_duplicate_filter_to_the_query(collector):
+    with mock.patch("collector.client.ER.QueryArticlesIter") as mock_iter:
+        mock_iter.return_value.execQuery.return_value = []
+        collector.get_articles(keywords=["x"], is_duplicate_filter="skipDuplicates")
+    assert mock_iter.call_args.kwargs["isDuplicateFilter"] == "skipDuplicates"
+
+
+def test_get_articles_keeps_all_articles_by_default(collector):
+    with mock.patch("collector.client.ER.QueryArticlesIter") as mock_iter:
+        mock_iter.return_value.execQuery.return_value = []
+        collector.get_articles(keywords=["x"])
+    assert mock_iter.call_args.kwargs["isDuplicateFilter"] == "keepAll"
+
+
+def test_get_articles_complex_query_gets_the_duplicate_filter(collector):
+    """A complex query carries the filter in its $filter object, other filters kept."""
+    query = {"$query": {"conceptUri": "x"}, "$filter": {"minSentiment": 0}}
+    with mock.patch("collector.client.ER.QueryArticlesIter") as mock_iter:
+        mock_iter.initWithComplexQuery.return_value.execQuery.return_value = []
+        collector.get_articles(query=query, is_duplicate_filter="skipDuplicates")
+    expected = {"$query": {"conceptUri": "x"}, "$filter": {"minSentiment": 0, "isDuplicate": "skipDuplicates"}}
+    mock_iter.initWithComplexQuery.assert_called_once_with(expected)
+    assert query["$filter"] == {"minSentiment": 0}
+
+
+def test_get_event_articles_passes_return_info_to_exec_query(collector):
+    return_info = mock.Mock()
+    with mock.patch("collector.client.ER.QueryEventArticlesIter") as mock_iter:
+        mock_iter.return_value.execQuery.return_value = []
+        collector.get_event_articles("eng-1", return_info=return_info)
+    assert mock_iter.return_value.execQuery.call_args.kwargs["returnInfo"] is return_info
+
+
+def test_article_fields_are_the_on_off_options_only():
+    from collector.client import ARTICLE_FIELDS
+
+    assert {"concepts", "categories", "links"} <= set(ARTICLE_FIELDS)
+    assert "bodyLen" not in ARTICLE_FIELDS
+
+
+def test_get_articles_rejects_an_unknown_duplicate_filter(collector):
+    with pytest.raises(ValueError, match="'skip'"):
+        collector.get_articles(keywords=["x"], is_duplicate_filter="skip")

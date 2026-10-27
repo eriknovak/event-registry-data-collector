@@ -107,6 +107,8 @@ and `--save_format`.
 | `--save_to_file`       | True     | The path to the file to store the items. For `articles` and `events`, if the file already exists, the date of the last stored item replaces the date_start parameter, so repeated runs only collect new items. For `event_articles_from_file`, this is the path to a **folder** (Default: None)                                                  |
 | `--save_format`        | True     | The format in which to store the items. If `'array'`, it stores the items into an array of objects. Otherwise, each line consists of one item object (Default: None)                                                                                                                                                                             |
 | `--verbose`            | True     | If true, outputs the query parameters retrieved by Event Registry (Default: False)                                                                                                                                                                                                                                                               |
+| `--article_fields`     | True     | `articles`, `event_articles` and `event_articles_from_file` only. The comma separated extra article fields to return, e.g. `concepts,categories`; any on/off option of Event Registry's `ArticleInfoFlags` (Default: None, the Event Registry defaults) |
+| `--duplicates`         | True     | `articles` only. `skip` drops the articles Event Registry marks as duplicates of others; `keep` returns them with their `isDuplicate` flag (Default: `keep`) |
 
 ### Action: articles
 

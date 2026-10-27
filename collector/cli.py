@@ -9,17 +9,37 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+import eventregistry as ER
 
 from dotenv import load_dotenv
 
-from collector.client import EventRegistryCollector
+from collector.client import ARTICLE_FIELDS, EventRegistryCollector, article_return_info
 from collector.query import load_query_file
 
 logger = logging.getLogger(__name__)
 
 # the flags that define the query and conflict with --query_file
 QUERY_FLAGS = ("keywords", "concepts", "categories", "sources", "languages", "date_start", "date_end")
+
+# the --duplicates values and the Event Registry isDuplicateFilter each stands for
+DUPLICATE_FILTERS = {"skip": "skipDuplicates", "keep": "keepAll"}
+
+
+def add_article_fields_argument(subparser: argparse.ArgumentParser) -> None:
+    """Adds the --article_fields flag to a parser of an article-returning action.
+
+    Args:
+        subparser (argparse.ArgumentParser): The action parser.
+    """
+    subparser.add_argument(
+        "--article_fields",
+        type=str,
+        default=None,
+        help="The comma separated extra article fields to return, e.g. concepts,categories. "
+        f"Options: {', '.join(ARTICLE_FIELDS)}",
+    )
 
 
 def format_label(item: Dict[str, Any]) -> str:
@@ -58,6 +78,23 @@ def render_suggestions(items: List[Dict[str, Any]]) -> str:
     widths = [max(len(row[col]) for row in [header] + rows) for col in range(4)]
     lines = ["  ".join(value.ljust(width) for value, width in zip(row, widths)) for row in [header] + rows]
     return "\n".join(lines)
+
+
+def parse_article_fields(value: Optional[str]) -> Optional[ER.ReturnInfo]:
+    """Turns the --article_fields value into the return info for the query.
+
+    Args:
+        value (Optional[str]): The comma separated article fields, or None.
+
+    Returns:
+        Optional[ER.ReturnInfo]: The return info asking for those fields, or
+            None (the Event Registry defaults) if no field is named.
+
+    Raises:
+        ValueError: If a field is not an ArticleInfoFlags option.
+    """
+    fields = [field.strip() for field in (value or "").split(",") if field.strip()]
+    return article_return_info(fields) if fields else None
 
 
 def get_conflicting_flags(args: argparse.Namespace) -> List[str]:
@@ -181,6 +218,14 @@ def create_argparser() -> argparse.ArgumentParser:
         type=bool,
         default=False,
         help="If true, output the query parameters retrieved by ER",
+    )
+
+    add_article_fields_argument(subparser)
+    subparser.add_argument(
+        "--duplicates",
+        choices=list(DUPLICATE_FILTERS),
+        default="keep",
+        help="Whether to skip or keep the articles Event Registry marks as duplicates (Default: keep)",
     )
 
     ###################################
@@ -380,6 +425,8 @@ def create_argparser() -> argparse.ArgumentParser:
         help="If true, output the query parameters retrieved by ER",
     )
 
+    add_article_fields_argument(subparser)
+
     ###################################
     # Event Articles List Query
     ###################################
@@ -477,6 +524,8 @@ def create_argparser() -> argparse.ArgumentParser:
         help="If true, output the query parameters retrieved by ER",
     )
 
+    add_article_fields_argument(subparser)
+
     ###################################
     # Suggest Query
     ###################################
@@ -566,6 +615,13 @@ def main() -> None:
         save_format = args.save_format if hasattr(args, "save_format") and args.save_format else None
 
         verbose = args.verbose if hasattr(args, "verbose") and args.verbose else None
+        # article details and duplicate handling
+        try:
+            return_info = parse_article_fields(getattr(args, "article_fields", None))
+        except ValueError as error:
+            logger.error(str(error))
+            sys.exit(1)
+        is_duplicate_filter = DUPLICATE_FILTERS[getattr(args, "duplicates", "keep")]
 
         if verbose:
             # output additional debug information
@@ -618,6 +674,8 @@ def main() -> None:
                 save_format=save_format,
                 verbose=verbose,
                 query=query,
+                return_info=return_info,
+                is_duplicate_filter=is_duplicate_filter,
             )
 
         elif args.action == "events":
@@ -666,6 +724,7 @@ def main() -> None:
                 save_to_file=save_to_file,
                 save_format=save_format,
                 verbose=verbose,
+                return_info=return_info,
             )
 
         elif args.action == "event_articles_from_file":
@@ -690,6 +749,7 @@ def main() -> None:
                 save_to_folder=save_to_file,
                 save_format=save_format,
                 verbose=verbose,
+                return_info=return_info,
             )
 
         else:
