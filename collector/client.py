@@ -204,6 +204,8 @@ class EventRegistryCollector:
     Attributes:
         MAX_EVENT_REQUESTS (int): The maximum number of event ids that
             can be requested in a single query.
+        MAX_ARTICLE_REQUESTS (int): The maximum number of article URIs that
+            can be requested in a single query.
     """
 
     def __init__(self, api_key: str, max_repeat_request: int = -1):
@@ -219,6 +221,7 @@ class EventRegistryCollector:
         # initialize the event registry instance
         self._er = ER.EventRegistry(apiKey=api_key, repeatFailedRequestCount=max_repeat_request)
         self.MAX_EVENT_REQUESTS = 50
+        self.MAX_ARTICLE_REQUESTS = 100
 
     def get_concepts(self, concepts: List[str]) -> List[URI]:
         """Get the list of event registry concepts.
@@ -659,6 +662,40 @@ class EventRegistryCollector:
 
         # return the events for other use
         return events
+
+    def get_articles_by_uri(
+        self,
+        article_uris: List[str],
+        return_info: Optional[ER.ReturnInfo] = None,
+    ) -> Iterator[Dict[str, Any]]:
+        """Get the articles with the provided article URIs.
+
+        The URIs are requested in chunks of at most `MAX_ARTICLE_REQUESTS`.
+        A URI Event Registry no longer holds comes back with an error instead
+        of the article; it is logged and skipped, so the caller finds the
+        missing URIs by comparing them with the returned articles' `uri`.
+
+        Args:
+            article_uris (List[str]): The article URIs, e.g. ['9493148737'].
+            return_info (Optional[ER.ReturnInfo]): The article details to
+                return, e.g. from `article_return_info`. If None, the Event
+                Registry defaults are returned, full body included
+                (Default: None).
+
+        Returns:
+            Iterator[Dict[str, Any]]: The articles Event Registry returned,
+                one chunk requested at a time, in the order of the response.
+        """
+        # None: QueryArticle builds the default; 9.1 rejects returnInfo=None
+        request = ER.RequestArticleInfo(returnInfo=return_info) if return_info is not None else None
+        for start in range(0, len(article_uris), self.MAX_ARTICLE_REQUESTS):
+            chunk = article_uris[start : start + self.MAX_ARTICLE_REQUESTS]
+            response = self._er.execQuery(ER.QueryArticle(chunk, requestedResult=request))
+            for uri, obj in response.items():
+                if "info" in obj:
+                    yield obj["info"]
+                else:
+                    logger.warning("article %s not returned: %s", uri, obj.get("error", obj))
 
     def get_event_articles(
         self,
