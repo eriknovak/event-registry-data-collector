@@ -9,6 +9,7 @@ import pytest
 from collector.client import (
     URI,
     EventRegistryCollector,
+    article_return_info,
     is_category_uri,
     is_concept_uri,
     is_source_uri,
@@ -276,3 +277,40 @@ def test_article_fields_are_the_on_off_options_only():
 def test_get_articles_rejects_an_unknown_duplicate_filter(collector):
     with pytest.raises(ValueError, match="'skip'"):
         collector.get_articles(keywords=["x"], is_duplicate_filter="skip")
+
+
+def test_get_articles_by_uri_requests_100_uris_per_query(collector):
+    """URIs are requested in chunks of at most 100, and every returned article is yielded."""
+    uris = [str(n) for n in range(250)]
+    collector._er.execQuery.side_effect = lambda query: {
+        uri: {"info": {"uri": uri}} for uri in query.queryParams["articleUri"]
+    }
+
+    articles = list(collector.get_articles_by_uri(uris))
+
+    chunks = [call.args[0].queryParams["articleUri"] for call in collector._er.execQuery.call_args_list]
+    assert [len(chunk) for chunk in chunks] == [100, 100, 50]
+    assert [article["uri"] for article in articles] == uris
+
+
+def test_get_articles_by_uri_skips_uris_returned_with_an_error(collector, caplog):
+    """A URI Event Registry no longer holds is logged and left out."""
+    collector._er.execQuery.return_value = {"1": {"info": {"uri": "1"}}, "2": {"error": "Invalid article uri"}}
+
+    with caplog.at_level(logging.WARNING):
+        articles = list(collector.get_articles_by_uri(["1", "2"]))
+
+    assert articles == [{"uri": "1"}]
+    assert "article 2 not returned" in caplog.text
+
+
+def test_get_articles_by_uri_passes_the_return_info(collector):
+    """The requested article fields reach the query."""
+    collector._er.execQuery.return_value = {}
+    return_info = article_return_info(["concepts", "storyUri"])
+
+    list(collector.get_articles_by_uri(["1"], return_info=return_info))
+
+    params = collector._er.execQuery.call_args.args[0]._getQueryParams()
+    assert params["includeArticleConcepts"] is True
+    assert params["includeArticleStoryUri"] is True
